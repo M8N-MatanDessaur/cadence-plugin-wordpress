@@ -1,0 +1,65 @@
+{
+  "id": "wordpress",
+  "name": "WordPress",
+  "version": "1.0.0",
+  "description": "Manage WordPress sites via the REST API -- create and edit posts, pages, media, categories, comments, users, and SEO metadata (Yoast / RankMath)",
+  "icon": "feather",
+  "tint": "33, 117, 155",
+  "instructions": "instructions.md",
+  "aiKeywords": [
+    "wordpress",
+    "wp",
+    "wp-admin",
+    "wordpress post",
+    "wordpress page",
+    "blog post",
+    "publish post",
+    "wordpress media",
+    "wordpress upload",
+    "wordpress category",
+    "wordpress tag",
+    "wordpress comment",
+    "wordpress user",
+    "wordpress seo",
+    "yoast",
+    "rankmath",
+    "gutenberg",
+    "cms",
+    "cuisinesalpin"
+  ],
+  "activationConditions": {
+    "always": true
+  },
+  "settings": [
+    {
+      "key": "siteUrl",
+      "label": "Site URL",
+      "description": "Your WordPress site root URL, without a trailing slash (e.g. https://example.com).",
+      "placeholder": "https://example.com"
+    },
+    {
+      "key": "username",
+      "label": "Username",
+      "description": "The WordPress user account (usually your wp-admin login name).",
+      "placeholder": "admin"
+    },
+    {
+      "key": "appPassword",
+      "label": "Application Password",
+      "description": "WordPress application password from Users > Profile > Application Passwords. Spaces are kept as-is.",
+      "placeholder": "xxxx xxxx xxxx xxxx xxxx xxxx",
+      "secret": true
+    }
+  ],
+  "contributions": {
+    "centerTabs": [
+      {
+        "id": "dashboard",
+        "label": "WordPress",
+        "icon": "feather",
+        "html": "tab.html"
+      }
+    ],
+    "routes": "routes.js"
+  }
+}

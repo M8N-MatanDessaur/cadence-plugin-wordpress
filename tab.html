@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WordPress</title>
+<script src="/plugins/sdk/devops-pilot-sdk.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 7px; height: 7px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface1); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--surface2); }
+
+  html, body {
+    margin: 0; padding: 0; height: 100vh; width: 100vw;
+    overflow: hidden; font-family: var(--font-ui);
+    color: var(--text); background: var(--base);
+  }
+  body { display: flex; flex-direction: column; }
+
+  /* ── Top toolbar ─────────────────────────────────────────────── */
+  .toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 12px; height: 42px; flex-shrink: 0;
+    background: var(--mantle); border-bottom: 1px solid var(--surface0);
+  }
+  .toolbar-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .conn-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .conn-dot.ok { background: var(--green); }
+  .conn-dot.err { background: var(--red); }
+  .conn-dot.pending { background: var(--yellow); }
+  .site-label { font-size: 11px; color: var(--subtext0); max-width: 240px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .spacer { flex: 1; }
+  .btn {
+    padding: 5px 10px; background: var(--surface0); border: 1px solid var(--surface1);
+    border-radius: var(--radius); color: var(--text); font: 11px var(--font-ui);
+    cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+    transition: border-color 0.12s, background 0.12s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--crust); border-color: transparent; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.danger { color: var(--red); }
+  .btn.danger:hover { border-color: var(--red); }
+  .btn svg { width: 13px; height: 13px; }
+  .btn-icon { padding: 5px; }
+  .sep { width: 1px; height: 20px; background: var(--surface1); margin: 0 2px; }
+
+  /* ── Main split ─────────────────────────────────────────────── */
+  .main { flex: 1; display: flex; min-height: 0; min-width: 0; }
+
+  .sidebar {
+    width: 180px; flex-shrink: 0; background: var(--mantle);
+    border-right: 1px solid var(--surface0); display: flex; flex-direction: column;
+    overflow-y: auto; padding: 8px 0;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px; padding: 7px 14px;
+    cursor: pointer; font-size: 12px; color: var(--subtext1);
+    border-left: 2px solid transparent;
+  }
+  .nav-item:hover { background: var(--surface0); color: var(--text); }
+  .nav-item.active { background: var(--surface0); color: var(--text); border-left-color: var(--accent); }
+  .nav-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .nav-count { margin-left: auto; font-size: 10px; background: var(--surface1); color: var(--subtext0);
+    padding: 1px 6px; border-radius: 99px; }
+
+  .content { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+  /* ── Filter bar ─────────────────────────────────────────────── */
+  .filter-bar {
+    display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+    border-bottom: 1px solid var(--surface0); flex-wrap: wrap;
+  }
+  .search {
+    flex: 1; min-width: 180px; max-width: 320px;
+    padding: 5px 10px; background: var(--surface0);
+    border: 1px solid var(--surface1); border-radius: var(--radius);
+    color: var(--text); font: 12px var(--font-ui); outline: none;
+  }
+  .search:focus { border-color: var(--accent); }
+  .sel {
+    padding: 5px 8px; background: var(--surface0);
+    border: 1px solid var(--surface1); border-radius: var(--radius);
+    color: var(--text); font: 11px var(--font-ui); outline: none;
+  }
+  .sel:focus { border-color: var(--accent); }
+  .count { font-size: 11px; color: var(--subtext0); margin-left: auto; }
+
+  /* ── List view ───────────────────────────────────────────────── */
+  .list {
+    flex: 1; overflow-y: auto; padding: 0;
+  }
+  .row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+    border-bottom: 1px solid var(--surface0); cursor: pointer; font-size: 12px;
+    transition: background 0.1s;
+  }
+  .row:hover { background: var(--surface0); }
+  .row.active { background: var(--surface0); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.publish { background: var(--green); }
+  .status-dot.draft { background: var(--yellow); }
+  .status-dot.pending { background: var(--peach); }
+  .status-dot.future { background: var(--blue); }
+  .status-dot.private { background: var(--mauve); }
+  .status-dot.trash { background: var(--red); }
+  .status-dot.hold { background: var(--yellow); }
+  .status-dot.approved { background: var(--green); }
+  .status-dot.spam { background: var(--red); }
+  .row-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .row-meta { font-size: 10px; color: var(--subtext0); white-space: nowrap; flex-shrink: 0; }
+  .row-badge { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: var(--surface1);
+    color: var(--subtext0); font-weight: 600; text-transform: uppercase; flex-shrink: 0; }
+
+  /* ── Media grid ──────────────────────────────────────────────── */
+  .media-grid {
+    flex: 1; overflow-y: auto; padding: 10px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px;
+  }
+  .media-card {
+    background: var(--surface0); border: 1px solid var(--surface1); border-radius: var(--radius);
+    overflow: hidden; cursor: pointer; position: relative; aspect-ratio: 1;
+    display: flex; flex-direction: column;
+  }
+  .media-card:hover { border-color: var(--accent); }
+  .media-card img {
+    width: 100%; height: 100%; object-fit: cover; flex: 1;
+  }
+  .media-card .media-label {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.75), transparent);
+    color: white; font-size: 10px; padding: 12px 6px 5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .media-card.file {
+    justify-content: center; align-items: center; color: var(--subtext0); font-size: 10px;
+  }
+  .media-card.file svg { width: 32px; height: 32px; margin-bottom: 6px; }
+
+  /* ── Detail panel ────────────────────────────────────────────── */
+  .detail {
+    width: 440px; flex-shrink: 0; background: var(--mantle);
+    border-left: 1px solid var(--surface0); display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .detail-header {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid var(--surface0); flex-shrink: 0;
+  }
+  .detail-title { flex: 1; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail-body { flex: 1; overflow-y: auto; padding: 12px; }
+
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 10px; font-weight: 600; color: var(--subtext0);
+    text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
+  .field input[type="text"], .field input[type="url"], .field input[type="number"], .field textarea, .field select {
+    width: 100%; padding: 7px 10px; background: var(--surface0);
+    border: 1px solid var(--surface1); border-radius: var(--radius);
+    color: var(--text); font: 12px var(--font-ui); outline: none;
+    font-family: var(--font-ui);
+  }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
+  .field textarea { resize: vertical; min-height: 80px; font-family: var(--font-mono); font-size: 11px; }
+  .field textarea.content-editor { min-height: 180px; }
+  .field-hint { font-size: 10px; color: var(--subtext0); margin-top: 3px; }
+  .field-hint.warn { color: var(--peach); }
+
+  .detail-actions {
+    display: flex; gap: 6px; padding: 10px 12px;
+    border-top: 1px solid var(--surface0); flex-shrink: 0; flex-wrap: wrap;
+  }
+
+  .tabs {
+    display: flex; border-bottom: 1px solid var(--surface0);
+    flex-shrink: 0; padding: 0 12px; gap: 4px;
+  }
+  .tab {
+    padding: 8px 12px; font-size: 11px; color: var(--subtext0);
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Empty states ────────────────────────────────────────────── */
+  .empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 60px 20px; text-align: center; color: var(--subtext0); font-size: 12px;
+  }
+  .empty svg { width: 36px; height: 36px; margin-bottom: 10px; color: var(--overlay1); }
+  .empty h3 { margin: 0 0 5px; font-size: 13px; color: var(--text); font-weight: 600; }
+  .empty p { margin: 0 0 14px; max-width: 300px; line-height: 1.5; }
+
+  /* ── Config modal ────────────────────────────────────────────── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+    padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--base); border: 1px solid var(--surface1); border-radius: var(--radius-lg);
+    width: 100%; max-width: 460px; max-height: 85vh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .modal-header { padding: 14px 16px; border-bottom: 1px solid var(--surface0);
+    font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .modal-body { padding: 16px; overflow-y: auto; flex: 1; }
+  .modal-footer { padding: 12px 16px; border-top: 1px solid var(--surface0);
+    display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ── Toast ───────────────────────────────────────────────────── */
+  .toast {
+    position: fixed; bottom: 16px; right: 16px; padding: 10px 14px;
+    background: var(--surface1); color: var(--text); font-size: 12px;
+    border-radius: var(--radius); border-left: 3px solid var(--accent);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3); z-index: 200;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    max-width: 300px;
+  }
+  .toast.show { opacity: 1; }
+  .toast.err { border-left-color: var(--red); }
+  .toast.ok { border-left-color: var(--green); }
+
+  /* ── Loading ─────────────────────────────────────────────────── */
+  .loading { display: flex; align-items: center; justify-content: center; padding: 40px;
+    color: var(--subtext0); font-size: 11px; }
+  .spinner {
+    width: 14px; height: 14px; border: 2px solid var(--surface1);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Responsive ──────────────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .detail { width: 380px; }
+  }
+  @media (max-width: 768px) {
+    .sidebar { width: 48px; }
+    .sidebar .nav-label, .sidebar .nav-count { display: none; }
+    .nav-item { justify-content: center; padding: 10px 0; }
+    .detail {
+      position: fixed; top: 42px; right: 0; bottom: 0; left: 0;
+      width: auto; z-index: 50; border-left: none;
+      transform: translateX(100%); transition: transform 0.25s ease;
+    }
+    .detail.open { transform: translateX(0); }
+    .site-label { max-width: 120px; }
+  }
+  @media (max-width: 480px) {
+    .media-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+    .toolbar { padding: 0 8px; }
+    .btn .btn-label { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Toolbar ───────────────────────────────────────────── -->
+<div class="toolbar">
+  <div class="toolbar-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>
+    WordPress
+  </div>
+  <span class="conn-dot pending" id="connDot" title="Connection status"></span>
+  <span class="site-label" id="siteLabel">not configured</span>
+  <div class="spacer"></div>
+  <button class="btn" id="refreshBtn" title="Refresh">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+    <span class="btn-label">Refresh</span>
+  </button>
+  <button class="btn primary" id="newBtn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    <span class="btn-label">New</span>
+  </button>
+  <div class="sep"></div>
+  <button class="btn btn-icon" id="settingsBtn" title="Settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+  </button>
+</div>
+
+<!-- ── Main area ─────────────────────────────────────────── -->
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="nav-item active" data-section="posts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+      <span class="nav-label">Posts</span>
+      <span class="nav-count" id="count-posts"></span>
+    </div>
+    <div class="nav-item" data-section="pages">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+      <span class="nav-label">Pages</span>
+      <span class="nav-count" id="count-pages"></span>
+    </div>
+    <div class="nav-item" data-section="media">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+      <span class="nav-label">Media</span>
+      <span class="nav-count" id="count-media"></span>
+    </div>
+    <div class="nav-item" data-section="comments">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+      <span class="nav-label">Comments</span>
+      <span class="nav-count" id="count-comments"></span>
+    </div>
+    <div class="nav-item" data-section="categories">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      <span class="nav-label">Categories</span>
+      <span class="nav-count" id="count-categories"></span>
+    </div>
+    <div class="nav-item" data-section="tags">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+      <span class="nav-label">Tags</span>
+      <span class="nav-count" id="count-tags"></span>
+    </div>
+    <div class="nav-item" data-section="users">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+      <span class="nav-label">Users</span>
+      <span class="nav-count" id="count-users"></span>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <div class="filter-bar">
+      <input type="text" class="search" id="searchInput" placeholder="Search...">
+      <select class="sel" id="statusFilter">
+        <option value="any">All statuses</option>
+        <option value="publish">Published</option>
+        <option value="draft">Draft</option>
+        <option value="pending">Pending</option>
+        <option value="future">Scheduled</option>
+        <option value="private">Private</option>
+        <option value="trash">Trash</option>
+      </select>
+      <span class="count" id="resultCount"></span>
+    </div>
+    <div id="listContainer" class="list"></div>
+  </div>
+
+  <!-- Detail panel -->
+  <div class="detail" id="detailPanel" style="display:none;">
+    <div class="detail-header">
+      <div class="detail-title" id="detailTitle">Details</div>
+      <button class="btn btn-icon" id="closeDetailBtn" title="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="tabs" id="detailTabs">
+      <div class="tab active" data-tab="content">Content</div>
+      <div class="tab" data-tab="seo">SEO</div>
+      <div class="tab" data-tab="meta">Meta</div>
+    </div>
+    <div class="detail-body" id="detailBody"></div>
+    <div class="detail-actions" id="detailActions"></div>
+  </div>
+</div>
+
+<!-- ── Config modal ──────────────────────────────────────── -->
+<div class="modal-overlay" id="configModal">
+  <div class="modal">
+    <div class="modal-header">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      WordPress Settings
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Site URL</label>
+        <input type="url" id="cfgSiteUrl" placeholder="https://example.com">
+        <div class="field-hint">Root URL, no trailing slash</div>
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="cfgUsername" placeholder="admin">
+        <div class="field-hint">Your wp-admin login name</div>
+      </div>
+      <div class="field">
+        <label>Application Password</label>
+        <input type="text" id="cfgAppPassword" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx">
+        <div class="field-hint">Create in wp-admin under Users &gt; Profile &gt; Application Passwords. Keep the spaces.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="cfgCancel">Cancel</button>
+      <button class="btn primary" id="cfgSave">Save &amp; test</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '/api/plugins/wordpress';
+
+const state = {
+  section: 'posts',
+  items: [],
+  cats: [],
+  tagsList: [],
+  mediaList: [],
+  usersList: [],
+  selected: null,
+  editing: null,
+  configured: false,
+  cfg: null,
+  search: '',
+  status: 'any',
+};
+
+// ── Helpers ────────────────────────────────────────────────
+async function api(path, opts) {
+  opts = opts || {};
+  const r = await fetch(API + path, {
+    method: opts.method || 'GET',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {}),
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const text = await r.text();
+  try { return { status: r.status, data: JSON.parse(text) }; }
+  catch (_) { return { status: r.status, data: text }; }
+}
+
+function toast(msg, level) {
+  const t = document.getElementById('toast');
+  t.className = 'toast show' + (level ? ' ' + level : '');
+  t.textContent = msg;
+  setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function stripHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function fmtDate(d) {
+  if (!d) return '';
+  try { return new Date(d).toLocaleDateString(); } catch (_) { return String(d).slice(0, 10); }
+}
+function titleOf(item) {
+  return (item && item.title && (item.title.rendered || item.title.raw || item.title)) || '(no title)';
+}
+
+// ── Connection ─────────────────────────────────────────────
+async function checkConnection() {
+  const dot = document.getElementById('connDot');
+  const label = document.getElementById('siteLabel');
+  dot.className = 'conn-dot pending';
+  const cfgR = await api('/config');
+  state.cfg = cfgR.data;
+  if (!cfgR.data || !cfgR.data.configured) {
+    dot.className = 'conn-dot err';
+    label.textContent = 'not configured';
+    state.configured = false;
+    openConfig();
+    return false;
+  }
+  const testR = await api('/test');
+  if (testR.data && testR.data.ok) {
+    dot.className = 'conn-dot ok';
+    label.textContent = cfgR.data.siteUrl.replace(/^https?:\/\//, '');
+    label.title = cfgR.data.siteUrl + ' (' + testR.data.user.name + ')';
+    state.configured = true;
+    return true;
+  } else {
+    dot.className = 'conn-dot err';
+    label.textContent = 'auth failed';
+    label.title = (testR.data && testR.data.error) || '';
+    state.configured = false;
+    return false;
+  }
+}
+
+// ── Config modal ───────────────────────────────────────────
+function openConfig() {
+  document.getElementById('cfgSiteUrl').value = (state.cfg && state.cfg.siteUrl) || '';
+  document.getElementById('cfgUsername').value = (state.cfg && state.cfg.username) || '';
+  document.getElementById('cfgAppPassword').value = '';
+  document.getElementById('configModal').classList.add('show');
+}
+function closeConfig() { document.getElementById('configModal').classList.remove('show'); }
+
+document.getElementById('settingsBtn').addEventListener('click', openConfig);
+document.getElementById('cfgCancel').addEventListener('click', closeConfig);
+document.getElementById('cfgSave').addEventListener('click', async () => {
+  const siteUrl = document.getElementById('cfgSiteUrl').value.trim();
+  const username = document.getElementById('cfgUsername').value.trim();
+  const appPassword = document.getElementById('cfgAppPassword').value.trim();
+  if (!siteUrl || !username || !appPassword) {
+    toast('All fields required', 'err'); return;
+  }
+  const r = await api('/config', { method: 'POST', body: { siteUrl, username, appPassword } });
+  if (r.data && r.data.ok) {
+    toast('Saved, testing connection...', 'ok');
+    closeConfig();
+    const ok = await checkConnection();
+    if (ok) { loadSection(state.section); loadCounts(); }
+  } else {
+    toast('Save failed', 'err');
+  }
+});
+
+// ── Navigation ─────────────────────────────────────────────
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    state.section = item.dataset.section;
+    closeDetail();
+    loadSection(state.section);
+  });
+});
+
+// ── Load counts for sidebar ────────────────────────────────
+async function loadCounts() {
+  if (!state.configured) return;
+  const types = [
+    { id: 'posts', path: '/posts?per_page=1&_fields=id&status=any' },
+    { id: 'pages', path: '/pages?per_page=1&_fields=id&status=any' },
+    { id: 'media', path: '/media?per_page=1&_fields=id' },
+    { id: 'comments', path: '/comments?per_page=1&_fields=id' },
+    { id: 'categories', path: '/categories?per_page=1&_fields=id' },
+    { id: 'tags', path: '/tags?per_page=1&_fields=id' },
+    { id: 'users', path: '/users?per_page=1&_fields=id' },
+  ];
+  for (const t of types) {
+    const r = await api(t.path);
+    const count = (r.data && r.data.total) || (Array.isArray(r.data) ? r.data.length : '');
+    const el = document.getElementById('count-' + t.id);
+    if (el) el.textContent = count || '';
+  }
+}
+
+// ── Section loader ─────────────────────────────────────────
+async function loadSection(section) {
+  const list = document.getElementById('listContainer');
+  list.className = section === 'media' ? 'media-grid' : 'list';
+  list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+  const q = state.search ? '&search=' + encodeURIComponent(state.search) : '';
+  const st = (section === 'posts' || section === 'pages') && state.status !== 'any'
+    ? '&status=' + state.status : '';
+
+  let r;
+  try {
+    if (section === 'posts') r = await api('/posts?per_page=30' + q + st);
+    else if (section === 'pages') r = await api('/pages?per_page=30' + q + st);
+    else if (section === 'media') r = await api('/media?per_page=30' + q);
+    else if (section === 'comments') r = await api('/comments?per_page=30' + q);
+    else if (section === 'categories') r = await api('/categories?per_page=100' + q);
+    else if (section === 'tags') r = await api('/tags?per_page=100' + q);
+    else if (section === 'users') r = await api('/users?per_page=50' + q);
+  } catch (e) { list.innerHTML = '<div class="empty"><p>Error: ' + esc(e.message) + '</p></div>'; return; }
+
+  if (!r || r.status >= 400) {
+    const err = (r && r.data && (r.data.error || r.data.message)) || 'Request failed';
+    list.innerHTML = '<div class="empty"><h3>Error</h3><p>' + esc(err) + '</p></div>';
+    return;
+  }
+
+  const items = r.data.items || r.data || [];
+  state.items = Array.isArray(items) ? items : [];
+  document.getElementById('resultCount').textContent = state.items.length + (r.data.total ? ' / ' + r.data.total : '') + ' items';
+
+  if (section === 'media') renderMediaGrid(state.items);
+  else if (section === 'posts' || section === 'pages') renderPostList(state.items);
+  else if (section === 'comments') renderCommentList(state.items);
+  else if (section === 'categories' || section === 'tags') renderTermList(state.items);
+  else if (section === 'users') renderUserList(state.items);
+}
+
+// ── List renderers ─────────────────────────────────────────
+function renderPostList(items) {
+  const list = document.getElementById('listContainer');
+  if (!items.length) { list.innerHTML = emptyState('No items'); return; }
+  list.innerHTML = items.map(p => `
+    <div class="row" data-id="${p.id}">
+      <span class="status-dot ${esc(p.status || '')}"></span>
+      <div class="row-title">${esc(stripHtml(titleOf(p)) || '(no title)')}</div>
+      <span class="row-badge">${esc(p.status || '')}</span>
+      <span class="row-meta">${esc(fmtDate(p.modified))}</span>
+    </div>
+  `).join('');
+  list.querySelectorAll('.row').forEach(row => {
+    row.addEventListener('click', () => openPostDetail(parseInt(row.dataset.id, 10)));
+  });
+}
+
+function renderMediaGrid(items) {
+  const list = document.getElementById('listContainer');
+  if (!items.length) { list.innerHTML = emptyState('No media'); return; }
+  list.innerHTML = items.map(m => {
+    const isImage = (m.media_type === 'image') || /^image\//.test(m.mime_type || '');
+    const thumb = (m.media_details && m.media_details.sizes && (m.media_details.sizes.thumbnail || m.media_details.sizes.medium)) || null;
+    const src = isImage ? ((thumb && thumb.source_url) || m.source_url) : '';
+    const name = m.title && m.title.rendered ? stripHtml(m.title.rendered) : (m.slug || '');
+    if (isImage) {
+      return `<div class="media-card" data-id="${m.id}">
+        <img src="${esc(src)}" alt="${esc(m.alt_text || '')}" loading="lazy">
+        <div class="media-label">${esc(name)}</div>
+      </div>`;
+    }
+    return `<div class="media-card file" data-id="${m.id}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+      <div>${esc(name)}</div>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.media-card').forEach(card => {
+    card.addEventListener('click', () => openMediaDetail(parseInt(card.dataset.id, 10)));
+  });
+}
+
+function renderCommentList(items) {
+  const list = document.getElementById('listContainer');
+  if (!items.length) { list.innerHTML = emptyState('No comments'); return; }
+  list.innerHTML = items.map(c => `
+    <div class="row" data-id="${c.id}">
+      <span class="status-dot ${esc(c.status || '')}"></span>
+      <div class="row-title">
+        <strong>${esc(c.author_name || 'anon')}</strong>: ${esc(stripHtml(c.content && c.content.rendered || '').slice(0, 90))}
+      </div>
+      <span class="row-badge">${esc(c.status || '')}</span>
+      <span class="row-meta">${esc(fmtDate(c.date))}</span>
+    </div>
+  `).join('');
+  list.querySelectorAll('.row').forEach(row => {
+    row.addEventListener('click', () => openCommentDetail(parseInt(row.dataset.id, 10)));
+  });
+}
+
+function renderTermList(items) {
+  const list = document.getElementById('listContainer');
+  if (!items.length) { list.innerHTML = emptyState('No items'); return; }
+  list.innerHTML = items.map(t => `
+    <div class="row" data-id="${t.id}">
+      <div class="row-title">${esc(t.name)}</div>
+      <span class="row-badge">${esc(t.slug)}</span>
+      <span class="row-meta">${t.count || 0} items</span>
+    </div>
+  `).join('');
+  list.querySelectorAll('.row').forEach(row => {
+    row.addEventListener('click', () => openTermDetail(parseInt(row.dataset.id, 10)));
+  });
+}
+
+function renderUserList(items) {
+  const list = document.getElementById('listContainer');
+  if (!items.length) { list.innerHTML = emptyState('No users'); return; }
+  list.innerHTML = items.map(u => `
+    <div class="row" data-id="${u.id}">
+      <div class="row-title">${esc(u.name)} <span style="color:var(--subtext0);font-size:11px">(${esc(u.slug)})</span></div>
+      <span class="row-badge">${esc((u.roles && u.roles[0]) || '')}</span>
+    </div>
+  `).join('');
+}
+
+function emptyState(msg) {
+  return `<div class="empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+    <h3>${esc(msg)}</h3><p>Nothing to show here yet.</p></div>`;
+}
+
+// ── Detail panel helpers ───────────────────────────────────
+function openDetail() { document.getElementById('detailPanel').style.display = 'flex'; document.getElementById('detailPanel').classList.add('open'); }
+function closeDetail() {
+  document.getElementById('detailPanel').style.display = 'none';
+  document.getElementById('detailPanel').classList.remove('open');
+  state.selected = null; state.editing = null;
+}
+document.getElementById('closeDetailBtn').addEventListener('click', closeDetail);
+
+document.getElementById('detailTabs').addEventListener('click', (e) => {
+  if (!e.target.classList.contains('tab')) return;
+  document.querySelectorAll('#detailTabs .tab').forEach(t => t.classList.remove('active'));
+  e.target.classList.add('active');
+  const name = e.target.dataset.tab;
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === name));
+});
+
+// ── Post / Page detail ─────────────────────────────────────
+async function openPostDetail(id) {
+  openDetail();
+  document.getElementById('detailTitle').textContent = 'Loading...';
+  document.getElementById('detailBody').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const type = state.section === 'pages' ? 'pages' : 'posts';
+  const r = await api('/' + type + '/' + id);
+  if (r.status >= 400) { document.getElementById('detailBody').innerHTML = '<p style="color:var(--red)">' + esc((r.data && r.data.message) || 'Error') + '</p>'; return; }
+  state.selected = r.data;
+  state.editing = { ...r.data };
+  renderPostDetail(r.data, type);
+}
+
+function renderPostDetail(p, type) {
+  document.getElementById('detailTitle').textContent = stripHtml(titleOf(p)) || '(untitled)';
+  const body = document.getElementById('detailBody');
+  const title = (p.title && (p.title.raw || p.title.rendered)) || '';
+  const content = (p.content && (p.content.raw || p.content.rendered)) || '';
+  const excerpt = (p.excerpt && (p.excerpt.raw || p.excerpt.rendered)) || '';
+  const meta = p.meta || {};
+
+  body.innerHTML = `
+    <div class="tab-panel active" data-panel="content">
+      <div class="field">
+        <label>Title</label>
+        <input type="text" id="f-title" value="${esc(title)}">
+      </div>
+      <div class="field">
+        <label>Slug</label>
+        <input type="text" id="f-slug" value="${esc(p.slug || '')}">
+      </div>
+      <div class="field">
+        <label>Status</label>
+        <select id="f-status">
+          <option value="draft" ${p.status==='draft'?'selected':''}>Draft</option>
+          <option value="publish" ${p.status==='publish'?'selected':''}>Publish</option>
+          <option value="pending" ${p.status==='pending'?'selected':''}>Pending</option>
+          <option value="private" ${p.status==='private'?'selected':''}>Private</option>
+          <option value="future" ${p.status==='future'?'selected':''}>Schedule</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Excerpt</label>
+        <textarea id="f-excerpt">${esc(excerpt)}</textarea>
+      </div>
+      <div class="field">
+        <label>Content (HTML)</label>
+        <textarea id="f-content" class="content-editor">${esc(content)}</textarea>
+        <div class="field-hint">HTML is rendered by WordPress. For Gutenberg blocks, use <code>&lt;!-- wp:paragraph --&gt;</code> syntax.</div>
+      </div>
+      ${type === 'posts' ? `
+        <div class="field">
+          <label>Featured media ID</label>
+          <input type="number" id="f-featured" value="${p.featured_media || ''}">
+        </div>
+      ` : `
+        <div class="field">
+          <label>Parent page ID</label>
+          <input type="number" id="f-parent" value="${p.parent || 0}">
+        </div>
+        <div class="field">
+          <label>Menu order</label>
+          <input type="number" id="f-menu-order" value="${p.menu_order || 0}">
+        </div>
+      `}
+      <div class="field">
+        <label>Link</label>
+        <input type="url" readonly value="${esc(p.link || '')}">
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="seo">
+      <div class="field">
+        <label>SEO Title</label>
+        <input type="text" id="seo-title" value="${esc(meta._yoast_wpseo_title || meta.rank_math_title || '')}">
+        <div class="field-hint">50-60 chars ideal</div>
+      </div>
+      <div class="field">
+        <label>Meta Description</label>
+        <textarea id="seo-desc" style="min-height:60px;font-family:var(--font-ui);font-size:12px;">${esc(meta._yoast_wpseo_metadesc || meta.rank_math_description || '')}</textarea>
+        <div class="field-hint">140-160 chars ideal</div>
+      </div>
+      <div class="field">
+        <label>Focus Keyword</label>
+        <input type="text" id="seo-focus" value="${esc(meta._yoast_wpseo_focuskw || meta.rank_math_focus_keyword || '')}">
+      </div>
+      <div class="field">
+        <label>Canonical URL</label>
+        <input type="url" id="seo-canonical" value="${esc(meta._yoast_wpseo_canonical || meta.rank_math_canonical_url || '')}">
+      </div>
+      <div class="field">
+        <label>Open Graph Title</label>
+        <input type="text" id="seo-og-title" value="${esc(meta._yoast_wpseo_opengraph_title || meta.rank_math_facebook_title || '')}">
+      </div>
+      <div class="field">
+        <label>Open Graph Description</label>
+        <textarea id="seo-og-desc" style="min-height:50px;font-family:var(--font-ui);font-size:12px;">${esc(meta._yoast_wpseo_opengraph_description || meta.rank_math_facebook_description || '')}</textarea>
+      </div>
+    </div>
+
+    <div class="tab-panel" data-panel="meta">
+      <div class="field">
+        <label>ID</label>
+        <input type="text" readonly value="${p.id}">
+      </div>
+      <div class="field">
+        <label>Date</label>
+        <input type="text" readonly value="${esc(p.date || '')}">
+      </div>
+      <div class="field">
+        <label>Modified</label>
+        <input type="text" readonly value="${esc(p.modified || '')}">
+      </div>
+      <div class="field">
+        <label>Author ID</label>
+        <input type="text" readonly value="${esc(p.author || '')}">
+      </div>
+      <div class="field">
+        <label>Comment status</label>
+        <select id="f-comment-status">
+          <option value="open" ${p.comment_status==='open'?'selected':''}>Open</option>
+          <option value="closed" ${p.comment_status==='closed'?'selected':''}>Closed</option>
+        </select>
+      </div>
+    </div>
+  `;
+  renderActions(`
+    <button class="btn primary" id="saveBtn">Save</button>
+    <button class="btn" id="viewBtn">View</button>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn danger" id="trashBtn">Trash</button>
+  `);
+  document.getElementById('saveBtn').addEventListener('click', () => savePost(type));
+  document.getElementById('viewBtn').addEventListener('click', () => window.open(p.link, '_blank'));
+  document.getElementById('trashBtn').addEventListener('click', () => trashPost(type, p.id));
+}
+
+function renderActions(html) {
+  document.getElementById('detailActions').innerHTML = html;
+}
+
+async function savePost(type) {
+  const id = state.selected.id;
+  const data = {
+    title: document.getElementById('f-title').value,
+    slug: document.getElementById('f-slug').value,
+    status: document.getElementById('f-status').value,
+    excerpt: document.getElementById('f-excerpt').value,
+    content: document.getElementById('f-content').value,
+    comment_status: document.getElementById('f-comment-status').value,
+  };
+  if (type === 'posts') {
+    const f = document.getElementById('f-featured').value;
+    if (f) data.featured_media = parseInt(f, 10);
+  } else {
+    const parent = document.getElementById('f-parent').value;
+    const order = document.getElementById('f-menu-order').value;
+    if (parent) data.parent = parseInt(parent, 10);
+    if (order) data.menu_order = parseInt(order, 10);
+  }
+  // SEO meta
+  const seoMeta = {};
+  const seoTitle = document.getElementById('seo-title').value;
+  const seoDesc = document.getElementById('seo-desc').value;
+  const seoFocus = document.getElementById('seo-focus').value;
+  const seoCanonical = document.getElementById('seo-canonical').value;
+  const seoOgTitle = document.getElementById('seo-og-title').value;
+  const seoOgDesc = document.getElementById('seo-og-desc').value;
+  if (seoTitle) { seoMeta._yoast_wpseo_title = seoTitle; seoMeta.rank_math_title = seoTitle; }
+  if (seoDesc) { seoMeta._yoast_wpseo_metadesc = seoDesc; seoMeta.rank_math_description = seoDesc; }
+  if (seoFocus) { seoMeta._yoast_wpseo_focuskw = seoFocus; seoMeta.rank_math_focus_keyword = seoFocus; }
+  if (seoCanonical) { seoMeta._yoast_wpseo_canonical = seoCanonical; seoMeta.rank_math_canonical_url = seoCanonical; }
+  if (seoOgTitle) { seoMeta._yoast_wpseo_opengraph_title = seoOgTitle; seoMeta.rank_math_facebook_title = seoOgTitle; }
+  if (seoOgDesc) { seoMeta._yoast_wpseo_opengraph_description = seoOgDesc; seoMeta.rank_math_facebook_description = seoOgDesc; }
+  if (Object.keys(seoMeta).length) data.meta = seoMeta;
+
+  const r = await api('/' + type + '/' + id, { method: 'PUT', body: data });
+  if (r.status >= 400) {
+    toast((r.data && r.data.message) || 'Save failed', 'err');
+    return;
+  }
+  toast('Saved', 'ok');
+  loadSection(state.section);
+}
+
+async function trashPost(type, id) {
+  if (!confirm('Move to trash?')) return;
+  const r = await api('/' + type + '/' + id, { method: 'DELETE' });
+  if (r.status >= 400) { toast('Delete failed', 'err'); return; }
+  toast('Trashed', 'ok');
+  closeDetail();
+  loadSection(state.section);
+}
+
+// ── Media detail ───────────────────────────────────────────
+async function openMediaDetail(id) {
+  openDetail();
+  document.getElementById('detailTitle').textContent = 'Loading...';
+  document.getElementById('detailBody').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const r = await api('/media/' + id);
+  if (r.status >= 400) { document.getElementById('detailBody').innerHTML = '<p style="color:var(--red)">Error</p>'; return; }
+  state.selected = r.data;
+  renderMediaDetail(r.data);
+}
+
+function renderMediaDetail(m) {
+  document.getElementById('detailTitle').textContent = stripHtml(titleOf(m)) || 'Media';
+  const body = document.getElementById('detailBody');
+  const title = (m.title && (m.title.raw || m.title.rendered)) || '';
+  const caption = (m.caption && (m.caption.raw || m.caption.rendered)) || '';
+  const description = (m.description && (m.description.raw || m.description.rendered)) || '';
+  const isImage = /^image\//.test(m.mime_type || '');
+
+  body.innerHTML = `
+    <div class="tab-panel active" data-panel="content">
+      ${isImage ? `<div style="margin-bottom:12px;text-align:center;background:var(--surface0);padding:10px;border-radius:var(--radius);">
+        <img src="${esc(m.source_url)}" style="max-width:100%;max-height:200px;">
+      </div>` : ''}
+      <div class="field">
+        <label>Title</label>
+        <input type="text" id="m-title" value="${esc(title)}">
+      </div>
+      <div class="field">
+        <label>Alt text</label>
+        <input type="text" id="m-alt" value="${esc(m.alt_text || '')}">
+        <div class="field-hint">Describe the image for screen readers &amp; SEO</div>
+      </div>
+      <div class="field">
+        <label>Caption</label>
+        <textarea id="m-caption" style="min-height:50px;font-family:var(--font-ui);font-size:12px;">${esc(caption)}</textarea>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <textarea id="m-description" style="min-height:50px;font-family:var(--font-ui);font-size:12px;">${esc(description)}</textarea>
+      </div>
+      <div class="field">
+        <label>Source URL</label>
+        <input type="url" readonly value="${esc(m.source_url || '')}">
+      </div>
+      <div class="field">
+        <label>MIME type</label>
+        <input type="text" readonly value="${esc(m.mime_type || '')}">
+      </div>
+      ${m.media_details && m.media_details.width ? `
+        <div class="field">
+          <label>Dimensions</label>
+          <input type="text" readonly value="${m.media_details.width} x ${m.media_details.height} px">
+        </div>
+      ` : ''}
+    </div>
+  `;
+  renderActions(`
+    <button class="btn primary" id="saveBtn">Save</button>
+    <button class="btn" id="copyBtn">Copy URL</button>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn danger" id="delBtn">Delete</button>
+  `);
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const data = {
+      title: document.getElementById('m-title').value,
+      alt_text: document.getElementById('m-alt').value,
+      caption: document.getElementById('m-caption').value,
+      description: document.getElementById('m-description').value,
+    };
+    const r = await api('/media/' + m.id, { method: 'PUT', body: data });
+    if (r.status >= 400) { toast('Save failed', 'err'); return; }
+    toast('Saved', 'ok');
+  });
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(m.source_url);
+    toast('URL copied', 'ok');
+  });
+  document.getElementById('delBtn').addEventListener('click', async () => {
+    if (!confirm('Permanently delete this media?')) return;
+    const r = await api('/media/' + m.id, { method: 'DELETE' });
+    if (r.status >= 400) { toast('Delete failed', 'err'); return; }
+    toast('Deleted', 'ok');
+    closeDetail();
+    loadSection('media');
+  });
+}
+
+// ── Comment detail ─────────────────────────────────────────
+async function openCommentDetail(id) {
+  openDetail();
+  const r = await api('/comments/' + id);
+  if (r.status >= 400) { return; }
+  state.selected = r.data;
+  const c = r.data;
+  document.getElementById('detailTitle').textContent = (c.author_name || 'anon') + ' on post ' + c.post;
+  document.getElementById('detailBody').innerHTML = `
+    <div class="tab-panel active" data-panel="content">
+      <div class="field">
+        <label>Author</label>
+        <input type="text" readonly value="${esc(c.author_name || '')}">
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="text" readonly value="${esc(c.author_email || '')}">
+      </div>
+      <div class="field">
+        <label>Status</label>
+        <input type="text" readonly value="${esc(c.status || '')}">
+      </div>
+      <div class="field">
+        <label>Content</label>
+        <textarea readonly style="min-height:100px;font-family:var(--font-ui);font-size:12px;">${esc(stripHtml(c.content && c.content.rendered || ''))}</textarea>
+      </div>
+      <div class="field">
+        <label>Date</label>
+        <input type="text" readonly value="${esc(c.date || '')}">
+      </div>
+    </div>
+  `;
+  renderActions(`
+    <button class="btn" id="approveBtn">Approve</button>
+    <button class="btn" id="holdBtn">Hold</button>
+    <button class="btn" id="spamBtn">Spam</button>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn danger" id="trashBtn">Trash</button>
+  `);
+  const act = async (action) => {
+    if (!confirm(action.charAt(0).toUpperCase() + action.slice(1) + ' this comment?')) return;
+    const r = await api('/comments/' + c.id + '/' + action, { method: 'POST' });
+    if (r.status >= 400) { toast('Failed', 'err'); return; }
+    toast(action, 'ok');
+    closeDetail();
+    loadSection('comments');
+  };
+  document.getElementById('approveBtn').addEventListener('click', () => act('approve'));
+  document.getElementById('holdBtn').addEventListener('click', () => act('hold'));
+  document.getElementById('spamBtn').addEventListener('click', () => act('spam'));
+  document.getElementById('trashBtn').addEventListener('click', () => act('trash'));
+}
+
+// ── Category / Tag detail ──────────────────────────────────
+async function openTermDetail(id) {
+  openDetail();
+  const type = state.section; // categories or tags
+  const r = await api('/' + type + '/' + id);
+  if (r.status >= 400) return;
+  state.selected = r.data;
+  const t = r.data;
+  document.getElementById('detailTitle').textContent = t.name;
+  document.getElementById('detailBody').innerHTML = `
+    <div class="tab-panel active" data-panel="content">
+      <div class="field"><label>Name</label><input type="text" id="t-name" value="${esc(t.name)}"></div>
+      <div class="field"><label>Slug</label><input type="text" id="t-slug" value="${esc(t.slug)}"></div>
+      <div class="field"><label>Description</label><textarea id="t-desc" style="min-height:60px;font-family:var(--font-ui);font-size:12px;">${esc(t.description || '')}</textarea></div>
+      ${type === 'categories' ? `<div class="field"><label>Parent ID</label><input type="number" id="t-parent" value="${t.parent || 0}"></div>` : ''}
+      <div class="field"><label>Post count</label><input type="text" readonly value="${t.count || 0}"></div>
+    </div>
+  `;
+  renderActions(`
+    <button class="btn primary" id="saveBtn">Save</button>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn danger" id="delBtn">Delete</button>
+  `);
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const data = {
+      name: document.getElementById('t-name').value,
+      slug: document.getElementById('t-slug').value,
+      description: document.getElementById('t-desc').value,
+    };
+    if (type === 'categories') data.parent = parseInt(document.getElementById('t-parent').value, 10) || 0;
+    const r = await api('/' + type + '/' + t.id, { method: 'PUT', body: data });
+    if (r.status >= 400) { toast('Save failed', 'err'); return; }
+    toast('Saved', 'ok');
+    loadSection(type);
+  });
+  document.getElementById('delBtn').addEventListener('click', async () => {
+    if (!confirm('Delete "' + t.name + '"?')) return;
+    const r = await api('/' + type + '/' + t.id, { method: 'DELETE' });
+    if (r.status >= 400) { toast('Delete failed', 'err'); return; }
+    toast('Deleted', 'ok');
+    closeDetail();
+    loadSection(type);
+  });
+}
+
+// ── New button ─────────────────────────────────────────────
+document.getElementById('newBtn').addEventListener('click', async () => {
+  if (!state.configured) { openConfig(); return; }
+  const section = state.section;
+  if (section === 'posts' || section === 'pages') {
+    const title = prompt('Title for new ' + (section === 'pages' ? 'page' : 'post') + ':');
+    if (!title) return;
+    const r = await api('/' + section, {
+      method: 'POST',
+      body: { title, content: '<p>Start writing...</p>', status: 'draft' },
+    });
+    if (r.status >= 400) { toast('Failed', 'err'); return; }
+    toast('Draft created', 'ok');
+    loadSection(section);
+    openPostDetail(r.data.id);
+  } else if (section === 'categories' || section === 'tags') {
+    const name = prompt('Name:');
+    if (!name) return;
+    const r = await api('/' + section, { method: 'POST', body: { name } });
+    if (r.status >= 400) { toast('Failed', 'err'); return; }
+    toast('Created', 'ok');
+    loadSection(section);
+  } else if (section === 'media') {
+    const filePath = prompt('Local file path to upload:');
+    if (!filePath) return;
+    const r = await api('/media/upload', { method: 'POST', body: { filePath } });
+    if (r.status >= 400) { toast('Upload failed: ' + ((r.data && r.data.error) || ''), 'err'); return; }
+    toast('Uploaded', 'ok');
+    loadSection('media');
+  } else {
+    toast('Not creatable from here', 'err');
+  }
+});
+
+// ── Search & filters ───────────────────────────────────────
+let searchTimer;
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  clearTimeout(searchTimer);
+  state.search = e.target.value;
+  searchTimer = setTimeout(() => loadSection(state.section), 300);
+});
+document.getElementById('statusFilter').addEventListener('change', (e) => {
+  state.status = e.target.value;
+  loadSection(state.section);
+});
+
+// ── Refresh ────────────────────────────────────────────────
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  await checkConnection();
+  loadSection(state.section);
+  loadCounts();
+});
+
+// ── Init ───────────────────────────────────────────────────
+(async () => {
+  const ok = await checkConnection();
+  if (ok) {
+    loadSection('posts');
+    loadCounts();
+  }
+})();
+</script>
+</body>
+</html>
