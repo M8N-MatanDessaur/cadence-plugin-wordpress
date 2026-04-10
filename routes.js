@@ -1327,32 +1327,39 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
             out.plugins = detectPluginsFromNamespaces(rootR.data.namespaces || []);
           }
         } catch (_) {}
-        const simpleCount = async (rb) => {
+        const simpleCount = async (rb, extraParams) => {
           try {
-            const r = await wpRequest('GET', apiBase(cfg) + '/' + rb + '?per_page=1&_fields=id&status=any&context=edit', cfg);
+            const base = apiBase(cfg) + '/' + rb + '?per_page=1&_fields=id';
+            const qs = extraParams != null ? extraParams : 'status=any';
+            const r = await wpRequest('GET', qs ? base + '&' + qs : base, cfg);
             return parseInt(r.headers['x-wp-total'] || '0', 10) || 0;
           } catch (_) { return 0; }
         };
         out.counts.posts = await simpleCount('posts');
         out.counts.pages = await simpleCount('pages');
-        out.counts.media = await simpleCount('media');
-        try {
-          const draftsR = await wpRequest('GET', apiBase(cfg) + '/posts?status=draft&per_page=1&_fields=id&context=edit', cfg);
-          out.counts.drafts = parseInt(draftsR.headers['x-wp-total'] || '0', 10) || 0;
-        } catch (_) { out.counts.drafts = 0; }
+        out.counts.media = await simpleCount('media', '');
+        // Drafts = draft posts + draft pages
+        const [draftPosts, draftPages] = await Promise.all([
+          simpleCount('posts', 'status=draft'),
+          simpleCount('pages', 'status=draft')
+        ]);
+        out.counts.drafts = draftPosts + draftPages;
         try {
           const cmR = await wpRequest('GET', apiBase(cfg) + '/comments?status=hold&per_page=1&_fields=id&context=edit', cfg);
           out.counts.pendingComments = parseInt(cmR.headers['x-wp-total'] || '0', 10) || 0;
           if (out.counts.pendingComments > 0) out.issues.push({ level: 'info', message: out.counts.pendingComments + ' comments awaiting moderation' });
         } catch (_) {}
-        // Detect common issues
+        // Detect common issues -- paginate through ALL images
         try {
-          const missingAlt = await wpRequest('GET',
-            apiBase(cfg) + '/media?per_page=100&_fields=id,alt_text&media_type=image', cfg);
-          if (Array.isArray(missingAlt.data)) {
-            const noAlt = missingAlt.data.filter(m => !m.alt_text || !m.alt_text.trim()).length;
-            if (noAlt > 0) out.issues.push({ level: 'warn', message: noAlt + ' images without alt text (SEO / accessibility)' });
-          }
+          let noAlt = 0, page = 1, totalPages = 1;
+          do {
+            const r = await wpRequest('GET',
+              apiBase(cfg) + '/media?per_page=100&_fields=id,alt_text&media_type=image&page=' + page, cfg);
+            if (page === 1) totalPages = parseInt(r.headers['x-wp-totalpages'] || '1', 10) || 1;
+            if (Array.isArray(r.data)) noAlt += r.data.filter(m => !m.alt_text || !m.alt_text.trim()).length;
+            page++;
+          } while (page <= totalPages);
+          if (noAlt > 0) out.issues.push({ level: 'warn', message: noAlt + ' images without alt text (SEO / accessibility)' });
         } catch (_) {}
         return json(res, out);
       }

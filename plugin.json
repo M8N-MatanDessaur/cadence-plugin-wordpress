@@ -1,7 +1,7 @@
 {
   "id": "wordpress",
   "name": "WordPress",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Manage WordPress sites via the REST API -- create and edit posts, pages, media, categories, comments, users, and SEO metadata (Yoast / RankMath)",
   "icon": "feather",
   "tint": "33, 117, 155",
