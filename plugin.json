@@ -30,28 +30,9 @@
   "activationConditions": {
     "always": true
   },
-  "settings": [
-    {
-      "key": "siteUrl",
-      "label": "Site URL",
-      "description": "Your WordPress site root URL, without a trailing slash (e.g. https://example.com).",
-      "placeholder": "https://example.com"
-    },
-    {
-      "key": "username",
-      "label": "Username",
-      "description": "The WordPress user account (usually your wp-admin login name).",
-      "placeholder": "admin"
-    },
-    {
-      "key": "appPassword",
-      "label": "Application Password",
-      "description": "WordPress application password from Users > Profile > Application Passwords. Spaces are kept as-is.",
-      "placeholder": "xxxx xxxx xxxx xxxx xxxx xxxx",
-      "secret": true
-    }
-  ],
+  "settings": [],
   "contributions": {
+    "settingsHtml": "settings.html",
     "centerTabs": [
       {
         "id": "dashboard",

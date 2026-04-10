@@ -1,5 +1,4 @@
 {
-  "siteUrl": "",
-  "username": "",
-  "appPassword": ""
+  "sites": [],
+  "activeSite": ""
 }

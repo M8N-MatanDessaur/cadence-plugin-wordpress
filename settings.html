@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WordPress Sites</title>
+<script src="/plugins/sdk/devops-pilot-sdk.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { padding: 0; margin: 0; font-family: var(--font-ui); color: var(--text); background: transparent; }
+  .section-desc { font-size: 11px; color: var(--subtext0); margin-bottom: 14px; }
+
+  /* ── Site list ─────────────────────────────────────── */
+  .site-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .site-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; background: var(--surface0);
+    border: 1px solid var(--surface1); border-radius: var(--radius, 6px);
+    transition: border-color 0.12s;
+  }
+  .site-card.active { border-color: var(--accent); }
+  .site-card .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    background: var(--surface1);
+  }
+  .site-card.active .dot { background: var(--green); }
+  .site-info { flex: 1; min-width: 0; }
+  .site-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .site-url { font-size: 10px; color: var(--subtext0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .site-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .site-actions button {
+    padding: 3px 8px; font-size: 10px; background: transparent;
+    border: 1px solid var(--surface1); border-radius: var(--radius, 6px);
+    color: var(--subtext1); cursor: pointer; font-family: var(--font-ui);
+  }
+  .site-actions button:hover { border-color: var(--accent); color: var(--text); }
+  .site-actions button.danger:hover { border-color: var(--red); color: var(--red); }
+
+  .empty-msg { font-size: 12px; color: var(--subtext0); padding: 12px 0; }
+
+  /* ── Add/Edit form ─────────────────────────────────── */
+  .form-area {
+    padding: 14px; background: var(--surface0);
+    border: 1px solid var(--surface1); border-radius: var(--radius, 6px);
+  }
+  .form-title { font-size: 12px; font-weight: 600; margin-bottom: 12px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 11px; color: var(--subtext0); margin-bottom: 3px; }
+  .field input {
+    width: 100%; padding: 6px 8px; background: var(--base);
+    border: 1px solid var(--surface1); border-radius: var(--radius, 6px);
+    color: var(--text); font: 12px var(--font-ui); outline: none;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .field input::placeholder { color: var(--subtext0); }
+  .form-btns { display: flex; gap: 6px; margin-top: 14px; }
+  .btn {
+    padding: 6px 14px; font: 11px var(--font-ui); cursor: pointer;
+    border-radius: var(--radius, 6px); border: 1px solid var(--surface1);
+    background: var(--surface0); color: var(--text);
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--crust); border-color: transparent; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .add-btn { margin-bottom: 16px; }
+  .pw-wrap { display: flex; gap: 0; }
+  .pw-wrap input { border-radius: var(--radius, 6px) 0 0 var(--radius, 6px); flex: 1; }
+  .pw-toggle {
+    background: var(--surface0); border: 1px solid var(--surface1); border-left: none;
+    border-radius: 0 var(--radius, 6px) var(--radius, 6px) 0; padding: 0 10px;
+    cursor: pointer; color: var(--subtext0); display: flex; align-items: center;
+  }
+  .pw-toggle:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="section-desc">
+  Manage the WordPress sites this plugin can connect to. The active site is used for all API operations and the dashboard tab.
+</div>
+
+<div class="site-list" id="siteList">
+  <div class="empty-msg">Loading...</div>
+</div>
+
+<button class="btn add-btn" id="addBtn" onclick="showForm()">+ Add Site</button>
+
+<div class="form-area" id="formArea" style="display:none;">
+  <div class="form-title" id="formTitle">Add Site</div>
+  <div class="field">
+    <label>Site Name</label>
+    <input id="fName" type="text" placeholder="My Blog">
+  </div>
+  <div class="field">
+    <label>Site URL</label>
+    <input id="fUrl" type="text" placeholder="https://example.com">
+  </div>
+  <div class="field">
+    <label>Username</label>
+    <input id="fUser" type="text" placeholder="admin">
+  </div>
+  <div class="field">
+    <label>Application Password</label>
+    <div class="pw-wrap">
+      <input id="fPass" type="password" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx">
+      <button type="button" class="pw-toggle" onclick="togglePw()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="form-btns">
+    <button class="btn primary" onclick="saveForm()">Save</button>
+    <button class="btn" onclick="hideForm()">Cancel</button>
+  </div>
+</div>
+
+<script>
+const API = '/api/plugins/wordpress';
+let sites = [];
+let activeSite = '';
+let editingName = null; // null = add mode, string = editing existing site
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function loadSites() {
+  try {
+    const r = await fetch(API + '/sites');
+    const data = await r.json();
+    sites = data.sites || [];
+    activeSite = data.activeSite || '';
+  } catch (_) {
+    sites = [];
+    activeSite = '';
+  }
+  render();
+}
+
+function render() {
+  const el = document.getElementById('siteList');
+  if (!sites.length) {
+    el.innerHTML = '<div class="empty-msg">No sites configured. Click "Add Site" to get started.</div>';
+    return;
+  }
+  el.innerHTML = sites.map(s => {
+    const isActive = s.name === activeSite;
+    return '<div class="site-card' + (isActive ? ' active' : '') + '">'
+      + '<div class="dot"></div>'
+      + '<div class="site-info">'
+      + '<div class="site-name">' + esc(s.name) + '</div>'
+      + '<div class="site-url">' + esc(s.siteUrl) + (s.username ? ' (' + esc(s.username) + ')' : '') + '</div>'
+      + '</div>'
+      + '<div class="site-actions">'
+      + (isActive ? '' : '<button onclick="setActive(\'' + esc(s.name).replace(/'/g, "\\'") + '\')">Set Active</button>')
+      + '<button onclick="editSite(\'' + esc(s.name).replace(/'/g, "\\'") + '\')">Edit</button>'
+      + '<button class="danger" onclick="removeSite(\'' + esc(s.name).replace(/'/g, "\\'") + '\')">Remove</button>'
+      + '</div></div>';
+  }).join('');
+}
+
+function showForm(site) {
+  editingName = site ? site.name : null;
+  document.getElementById('formTitle').textContent = site ? 'Edit Site' : 'Add Site';
+  document.getElementById('fName').value = site ? site.name : '';
+  document.getElementById('fUrl').value = site ? site.siteUrl : '';
+  document.getElementById('fUser').value = site ? site.username : '';
+  document.getElementById('fPass').value = '';
+  if (site) document.getElementById('fPass').placeholder = '(unchanged)';
+  else document.getElementById('fPass').placeholder = 'xxxx xxxx xxxx xxxx xxxx xxxx';
+  document.getElementById('formArea').style.display = '';
+  document.getElementById('addBtn').style.display = 'none';
+  document.getElementById('fName').focus();
+}
+
+function hideForm() {
+  document.getElementById('formArea').style.display = 'none';
+  document.getElementById('addBtn').style.display = '';
+  editingName = null;
+}
+
+async function saveForm() {
+  const name = document.getElementById('fName').value.trim();
+  const siteUrl = document.getElementById('fUrl').value.trim();
+  const username = document.getElementById('fUser').value.trim();
+  const appPassword = document.getElementById('fPass').value;
+
+  if (!name || !siteUrl || !username) {
+    DevOpsPilot.toast('Name, URL, and username are required.', 'error');
+    return;
+  }
+
+  if (editingName) {
+    // Update existing site
+    const body = { name, siteUrl, username };
+    if (appPassword) body.appPassword = appPassword;
+    const r = await fetch(API + '/sites/' + encodeURIComponent(editingName), {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (data.error) { DevOpsPilot.toast(data.error, 'error'); return; }
+    DevOpsPilot.toast('Site updated.', 'success');
+  } else {
+    // Add new site
+    if (!appPassword) { DevOpsPilot.toast('Application password is required for new sites.', 'error'); return; }
+    const r = await fetch(API + '/sites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, siteUrl, username, appPassword }),
+    });
+    const data = await r.json();
+    if (data.error) { DevOpsPilot.toast(data.error, 'error'); return; }
+    DevOpsPilot.toast('Site added.', 'success');
+  }
+
+  hideForm();
+  await loadSites();
+  notifyParent();
+}
+
+async function setActive(name) {
+  await fetch(API + '/sites/active', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  await loadSites();
+  notifyParent();
+  DevOpsPilot.toast('Switched to ' + name, 'success');
+}
+
+function editSite(name) {
+  const s = sites.find(x => x.name === name);
+  if (s) showForm(s);
+}
+
+let pendingRemove = null;
+async function removeSite(name) {
+  // Show inline confirmation instead of native confirm() (Electron blocks it in sandboxed iframes)
+  pendingRemove = name;
+  const el = document.getElementById('siteList');
+  const cards = el.querySelectorAll('.site-card');
+  cards.forEach(card => {
+    const cardName = card.querySelector('.site-name').textContent;
+    if (cardName === name) {
+      card.insertAdjacentHTML('beforeend',
+        '<div class="remove-confirm" style="display:flex;gap:6px;align-items:center;margin-left:8px;">'
+        + '<span style="font-size:10px;color:var(--red);">Remove?</span>'
+        + '<button onclick="confirmRemove()" style="padding:2px 8px;font-size:10px;background:var(--red);color:var(--crust);border:none;border-radius:var(--radius,6px);cursor:pointer;">Yes</button>'
+        + '<button onclick="cancelRemove()" style="padding:2px 8px;font-size:10px;background:var(--surface1);color:var(--text);border:none;border-radius:var(--radius,6px);cursor:pointer;">No</button>'
+        + '</div>');
+    }
+  });
+}
+async function confirmRemove() {
+  if (!pendingRemove) return;
+  await fetch(API + '/sites/' + encodeURIComponent(pendingRemove), { method: 'DELETE' });
+  pendingRemove = null;
+  await loadSites();
+  notifyParent();
+  DevOpsPilot.toast('Site removed.', 'success');
+}
+function cancelRemove() {
+  pendingRemove = null;
+  document.querySelectorAll('.remove-confirm').forEach(el => el.remove());
+}
+
+function togglePw() {
+  const el = document.getElementById('fPass');
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function notifyParent() {
+  // Tell the host app that WordPress config changed so the tab can refresh
+  try {
+    window.parent.postMessage({ __devopsPilot: true, type: 'configChanged', plugin: 'wordpress' }, '*');
+  } catch (_) {}
+}
+
+// Auto-resize the iframe to fit content
+function resizeFrame() {
+  try {
+    const h = Math.max(320, document.body.scrollHeight + 24);
+    if (window.frameElement) window.frameElement.style.height = h + 'px';
+  } catch (_) {}
+}
+new MutationObserver(resizeFrame).observe(document.body, { childList: true, subtree: true, attributes: true });
+
+loadSites();
+</script>
+</body>
+</html>

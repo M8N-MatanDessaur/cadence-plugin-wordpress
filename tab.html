@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WordPress</title>
 <script src="/plugins/sdk/devops-pilot-sdk.js"></script>
+<!-- Quill 2 rich text editor -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css">
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.min.js"></script>
 <style>
   * { box-sizing: border-box; }
   ::-webkit-scrollbar { width: 7px; height: 7px; }
@@ -32,6 +35,13 @@
   .conn-dot.pending { background: var(--yellow); }
   .site-label { font-size: 11px; color: var(--subtext0); max-width: 240px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .site-select {
+    padding: 3px 8px; background: var(--surface0);
+    border: 1px solid var(--surface1); border-radius: var(--radius);
+    color: var(--text); font: 11px var(--font-ui); outline: none;
+    max-width: 220px; cursor: pointer;
+  }
+  .site-select:focus { border-color: var(--accent); }
   .spacer { flex: 1; }
   .btn {
     padding: 5px 10px; background: var(--surface0); border: 1px solid var(--surface1);
@@ -52,22 +62,37 @@
   .main { flex: 1; display: flex; min-height: 0; min-width: 0; }
 
   .sidebar {
-    width: 180px; flex-shrink: 0; background: var(--mantle);
+    flex: 0 0 20%; min-width: 180px; max-width: 280px;
+    background: var(--mantle);
     border-right: 1px solid var(--surface0); display: flex; flex-direction: column;
-    overflow-y: auto; padding: 8px 0;
+    overflow-y: auto; padding: 6px 0 20px;
+  }
+  .nav-group-label {
+    font-size: 9px; font-weight: 700; color: var(--subtext0);
+    text-transform: uppercase; letter-spacing: 0.6px;
+    padding: 12px 14px 4px; user-select: none;
   }
   .nav-item {
-    display: flex; align-items: center; gap: 8px; padding: 7px 14px;
+    display: flex; align-items: center; gap: 9px; padding: 7px 14px;
     cursor: pointer; font-size: 12px; color: var(--subtext1);
-    border-left: 2px solid transparent;
+    border-left: 2px solid transparent; min-width: 0;
   }
   .nav-item:hover { background: var(--surface0); color: var(--text); }
   .nav-item.active { background: var(--surface0); color: var(--text); border-left-color: var(--accent); }
   .nav-item svg { width: 14px; height: 14px; flex-shrink: 0; }
-  .nav-count { margin-left: auto; font-size: 10px; background: var(--surface1); color: var(--subtext0);
-    padding: 1px 6px; border-radius: 99px; }
+  .nav-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nav-count { font-size: 10px; background: var(--surface1); color: var(--subtext0);
+    padding: 1px 6px; border-radius: 99px; flex-shrink: 0; }
+  .nav-item.active .nav-count { background: var(--accent); color: var(--crust); }
 
-  .content { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .content {
+    flex: 0 0 30%; min-width: 260px; max-width: 420px;
+    display: flex; flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--surface0);
+  }
+  /* When no detail is open, let the list column take all remaining space. */
+  .main.no-detail .content { flex: 1; max-width: none; border-right: none; }
 
   /* ── Filter bar ─────────────────────────────────────────────── */
   .filter-bar {
@@ -90,13 +115,11 @@
   .count { font-size: 11px; color: var(--subtext0); margin-left: auto; }
 
   /* ── List view ───────────────────────────────────────────────── */
-  .list {
-    flex: 1; overflow-y: auto; padding: 0;
-  }
+  .list { flex: 1; overflow-y: auto; padding: 0; min-width: 0; }
   .row {
     display: flex; align-items: center; gap: 10px; padding: 9px 14px;
     border-bottom: 1px solid var(--surface0); cursor: pointer; font-size: 12px;
-    transition: background 0.1s;
+    transition: background 0.1s; min-width: 0;
   }
   .row:hover { background: var(--surface0); }
   .row.active { background: var(--surface0); }
@@ -115,43 +138,89 @@
   .row-badge { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: var(--surface1);
     color: var(--subtext0); font-weight: 600; text-transform: uppercase; flex-shrink: 0; }
 
-  /* ── Media grid ──────────────────────────────────────────────── */
+  /* ── Media grid (responsive, no overflow) ──────────────────── */
   .media-grid {
-    flex: 1; overflow-y: auto; padding: 10px;
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px;
+    flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px;
+    display: grid;
+    /* min(90px, 100%) lets columns shrink below 90px when the container is very narrow,
+       preventing overflow that cascaded into visible gap/row glitches. */
+    grid-template-columns: repeat(auto-fill, minmax(min(90px, 100%), 1fr));
+    gap: 8px; align-content: start;
+    grid-auto-rows: min-content;
+    min-width: 0;
   }
   .media-card {
-    background: var(--surface0); border: 1px solid var(--surface1); border-radius: var(--radius);
-    overflow: hidden; cursor: pointer; position: relative; aspect-ratio: 1;
-    display: flex; flex-direction: column;
+    background: var(--surface0);
+    overflow: hidden; cursor: pointer; position: relative;
+    min-width: 0; width: 100%;
+    aspect-ratio: 1 / 1;
+    outline: 1px solid transparent; outline-offset: -1px;
+    transition: outline-color 0.12s;
+    border-radius: 4px;
   }
-  .media-card:hover { border-color: var(--accent); }
+  .media-card:hover { outline-color: var(--accent); }
+  .media-card.selected { outline-color: var(--accent); outline-width: 2px; }
   .media-card img {
-    width: 100%; height: 100%; object-fit: cover; flex: 1;
+    position: absolute; inset: 0;
+    width: 100%; height: 100%; object-fit: cover; display: block;
   }
   .media-card .media-label {
     position: absolute; bottom: 0; left: 0; right: 0;
     background: linear-gradient(to top, rgba(0,0,0,0.75), transparent);
-    color: white; font-size: 10px; padding: 12px 6px 5px;
+    color: white; font-size: 10px; padding: 14px 6px 5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    z-index: 1;
+  }
+  .media-card.file > svg,
+  .media-card.file > .file-label {
+    position: absolute; left: 0; right: 0;
+  }
+  .media-card.file > svg {
+    top: 50%; transform: translateY(-60%);
+    margin: 0 auto; width: 32px; height: 32px; color: var(--subtext0);
+  }
+  .media-card.file > .file-label {
+    top: 50%; margin-top: 6px; padding: 0 6px;
+    text-align: center; color: var(--subtext0); font-size: 10px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .media-card.file {
-    justify-content: center; align-items: center; color: var(--subtext0); font-size: 10px;
+  @media (max-width: 1200px) {
+    .media-grid { grid-template-columns: repeat(auto-fill, minmax(min(80px, 100%), 1fr)); }
   }
-  .media-card.file svg { width: 32px; height: 32px; margin-bottom: 6px; }
 
   /* ── Detail panel ────────────────────────────────────────────── */
   .detail {
-    width: 440px; flex-shrink: 0; background: var(--mantle);
+    flex: 1; min-width: 360px; background: var(--mantle);
     border-left: 1px solid var(--surface0); display: flex; flex-direction: column;
     overflow: hidden;
   }
   .detail-header {
-    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
     border-bottom: 1px solid var(--surface0); flex-shrink: 0;
   }
-  .detail-title { flex: 1; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .detail-body { flex: 1; overflow-y: auto; padding: 12px; }
+  .detail-title { flex: 1; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail-body {
+    flex: 1; overflow-y: auto; padding: 14px 18px; min-width: 0; min-height: 0;
+  }
+  /* Body wraps a 2-column grid on wide detail panels so fields use the space. */
+  .detail-body .form-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px;
+  }
+  .detail-body .form-grid .field.full { grid-column: 1 / -1; }
+  @media (max-width: 900px) {
+    .detail-body .form-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Fixed preview strip at the bottom of the detail column.
+     Lives OUTSIDE the scrollable body so it stays visible while the user
+     scrolls through the form fields. */
+  .detail-preview-wrap {
+    flex-shrink: 0;
+    border-top: 1px solid var(--surface0);
+    background: var(--crust);
+    display: none;
+  }
+  .detail-preview-wrap.active { display: block; }
 
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 10px; font-weight: 600; color: var(--subtext0);
@@ -163,8 +232,8 @@
     font-family: var(--font-ui);
   }
   .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
-  .field textarea { resize: vertical; min-height: 80px; font-family: var(--font-mono); font-size: 11px; }
-  .field textarea.content-editor { min-height: 180px; }
+  .field textarea { resize: vertical; min-height: 60px; }
+  .field textarea.mono { font-family: var(--font-mono); font-size: 11px; }
   .field-hint { font-size: 10px; color: var(--subtext0); margin-top: 3px; }
   .field-hint.warn { color: var(--peach); }
 
@@ -175,16 +244,143 @@
 
   .tabs {
     display: flex; border-bottom: 1px solid var(--surface0);
-    flex-shrink: 0; padding: 0 12px; gap: 4px;
+    flex-shrink: 0; padding: 0 12px; gap: 4px; overflow-x: auto;
   }
   .tab {
     padding: 8px 12px; font-size: 11px; color: var(--subtext0);
     cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    white-space: nowrap;
   }
   .tab:hover { color: var(--text); }
   .tab.active { color: var(--text); border-bottom-color: var(--accent); }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
+
+  /* ── Preview section ─────────────────────────────────────────── */
+  .preview-section {
+    background: var(--crust);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .preview-section-header {
+    display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+    background: var(--mantle); border-bottom: 1px solid var(--surface1);
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    color: var(--subtext0); letter-spacing: 0.4px;
+  }
+  .preview-section-header svg { width: 11px; height: 11px; }
+  .preview-section-header .spacer { flex: 1; }
+  .preview-section-header .btn-mini {
+    padding: 3px 8px; font-size: 10px; background: transparent;
+    border: 1px solid var(--surface1); color: var(--subtext0);
+    border-radius: 3px; cursor: pointer;
+  }
+  .preview-section-header .btn-mini:hover { border-color: var(--accent); color: var(--text); }
+  .preview-viewport {
+    position: relative;
+    width: 100%;
+    height: 260px;
+    background: #fff;
+    overflow: auto;
+  }
+  .preview-viewport iframe {
+    position: absolute;
+    top: 0; left: 0;
+    width: 1280px;
+    height: 800px;
+    border: none;
+    transform-origin: 0 0;
+    /* scale set inline via JS based on container width */
+  }
+  .preview-zoom-label {
+    min-width: 34px; text-align: center;
+    font-size: 10px; color: var(--subtext0);
+    font-variant-numeric: tabular-nums;
+  }
+  .preview-viewport.loading::before {
+    content: 'Loading preview...';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #888; font: 11px var(--font-ui);
+    background: var(--crust);
+    z-index: 2;
+  }
+  .preview-blocked {
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; padding: 24px;
+    color: var(--subtext0); font-size: 11px; text-align: center;
+    background: var(--crust);
+  }
+  .preview-blocked svg { width: 22px; height: 22px; margin-bottom: 8px; color: var(--overlay1); }
+
+  /* ── Quill editor theming ────────────────────────────────────── */
+  .rte-wrap {
+    display: flex; flex-direction: column; min-width: 0;
+    background: var(--surface0);
+    border: 1px solid var(--surface1);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .rte-toolbar-extra {
+    display: flex; gap: 4px; padding: 4px 6px;
+    background: var(--mantle);
+    border-bottom: 1px solid var(--surface1);
+  }
+  .rte-toolbar-extra button {
+    padding: 3px 8px; font-size: 10px; background: transparent;
+    color: var(--subtext0); border: 1px solid transparent;
+    border-radius: 3px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .rte-toolbar-extra button:hover { color: var(--text); background: var(--surface0); }
+  .rte-toolbar-extra button.active { color: var(--text); background: var(--surface1); }
+  .rte-toolbar-extra button svg { width: 11px; height: 11px; }
+  .rte-wrap .ql-toolbar.ql-snow {
+    border: none !important;
+    border-bottom: 1px solid var(--surface1) !important;
+    background: var(--mantle);
+  }
+  .rte-wrap .ql-toolbar.ql-snow .ql-stroke { stroke: var(--subtext1); }
+  .rte-wrap .ql-toolbar.ql-snow .ql-fill { fill: var(--subtext1); }
+  .rte-wrap .ql-toolbar.ql-snow .ql-picker { color: var(--subtext1); }
+  .rte-wrap .ql-toolbar.ql-snow button:hover .ql-stroke,
+  .rte-wrap .ql-toolbar.ql-snow button.ql-active .ql-stroke { stroke: var(--accent); }
+  .rte-wrap .ql-toolbar.ql-snow button:hover .ql-fill,
+  .rte-wrap .ql-toolbar.ql-snow button.ql-active .ql-fill { fill: var(--accent); }
+  .rte-wrap .ql-container.ql-snow {
+    border: none !important;
+    background: var(--base);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    min-height: 180px;
+  }
+  .rte-wrap .ql-editor { min-height: 180px; max-height: 480px; }
+  .rte-wrap .ql-editor.ql-blank::before { color: var(--overlay1); font-style: normal; }
+  .rte-wrap .ql-picker-options { background: var(--mantle); border-color: var(--surface1) !important; }
+  .rte-code-view {
+    display: none;
+    width: 100%; min-height: 240px;
+    padding: 10px 12px;
+    background: var(--base);
+    color: var(--text);
+    border: none; outline: none;
+    font-family: var(--font-mono);
+    font-size: 11px; line-height: 1.55;
+    resize: vertical;
+    white-space: pre;
+    overflow: auto;
+  }
+  .rte-wrap.code-view .ql-container { display: none; }
+  .rte-wrap.code-view .ql-toolbar { display: none; }
+  .rte-wrap.code-view .rte-code-view { display: block; min-height: 300px; }
+  /* Fullscreen */
+  .rte-wrap.fullscreen {
+    position: fixed; inset: 0; z-index: 1000;
+    border-radius: 0; background: var(--base);
+  }
+  .rte-wrap.fullscreen .ql-editor { max-height: none; height: calc(100vh - 92px); }
+  .rte-wrap.fullscreen .rte-code-view { height: calc(100vh - 50px); min-height: 0; }
 
   /* ── Empty states ────────────────────────────────────────────── */
   .empty {
@@ -195,30 +391,12 @@
   .empty h3 { margin: 0 0 5px; font-size: 13px; color: var(--text); font-weight: 600; }
   .empty p { margin: 0 0 14px; max-width: 300px; line-height: 1.5; }
 
-  /* ── Config modal ────────────────────────────────────────────── */
-  .modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-    display: none; align-items: center; justify-content: center; z-index: 100;
-    padding: 20px;
-  }
-  .modal-overlay.show { display: flex; }
-  .modal {
-    background: var(--base); border: 1px solid var(--surface1); border-radius: var(--radius-lg);
-    width: 100%; max-width: 460px; max-height: 85vh; overflow: hidden;
-    display: flex; flex-direction: column;
-  }
-  .modal-header { padding: 14px 16px; border-bottom: 1px solid var(--surface0);
-    font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .modal-body { padding: 16px; overflow-y: auto; flex: 1; }
-  .modal-footer { padding: 12px 16px; border-top: 1px solid var(--surface0);
-    display: flex; justify-content: flex-end; gap: 8px; }
-
   /* ── Toast ───────────────────────────────────────────────────── */
   .toast {
     position: fixed; bottom: 16px; right: 16px; padding: 10px 14px;
     background: var(--surface1); color: var(--text); font-size: 12px;
     border-radius: var(--radius); border-left: 3px solid var(--accent);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3); z-index: 200;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3); z-index: 2000;
     opacity: 0; pointer-events: none; transition: opacity 0.2s;
     max-width: 300px;
   }
@@ -226,34 +404,253 @@
   .toast.err { border-left-color: var(--red); }
   .toast.ok { border-left-color: var(--green); }
 
-  /* ── Loading ─────────────────────────────────────────────────── */
-  .loading { display: flex; align-items: center; justify-content: center; padding: 40px;
-    color: var(--subtext0); font-size: 11px; }
-  .spinner {
-    width: 14px; height: 14px; border: 2px solid var(--surface1);
-    border-top-color: var(--accent); border-radius: 50%;
-    animation: spin 0.8s linear infinite; margin-right: 8px;
+  /* ── Home dashboard ──────────────────────────────────────────── */
+  .home {
+    flex: 1; overflow-y: auto; padding: 24px 28px;
+    display: flex; flex-direction: column; gap: 20px;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .home-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  }
+  .home-title {
+    font-size: 20px; font-weight: 700; color: var(--text); margin: 0;
+    line-height: 1.2;
+  }
+  .home-subtitle { font-size: 12px; color: var(--subtext0); margin: 4px 0 0; }
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .home-card {
+    background: var(--mantle); border: 1px solid var(--surface0);
+    border-radius: var(--radius); padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 4px;
+    cursor: pointer; transition: border-color 0.12s, transform 0.12s;
+  }
+  .home-card:hover { border-color: var(--accent); }
+  .home-card .label {
+    font-size: 10px; font-weight: 600; color: var(--subtext0);
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .home-card .value { font-size: 22px; font-weight: 700; color: var(--text); }
+  .home-card .hint { font-size: 11px; color: var(--subtext0); }
+  .home-card.warn { border-color: rgba(250, 179, 135, 0.4); }
+  .home-card.warn .value { color: var(--peach); }
+
+  .home-section-title {
+    font-size: 11px; font-weight: 700; color: var(--subtext0);
+    text-transform: uppercase; letter-spacing: 0.6px;
+    margin: 6px 0 -6px;
+  }
+  .home-issues {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .home-issue {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: var(--radius);
+    background: var(--mantle); border: 1px solid var(--surface0);
+    font-size: 12px; color: var(--text);
+  }
+  .home-issue.warn { border-left: 3px solid var(--peach); }
+  .home-issue.info { border-left: 3px solid var(--blue); }
+  .home-issue.err  { border-left: 3px solid var(--red); }
+  .home-plugins {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .home-plugin {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 99px;
+    background: var(--surface0); border: 1px solid var(--surface1);
+    font-size: 11px; color: var(--text);
+  }
+  .home-plugin svg { width: 11px; height: 11px; }
+  .home-preview {
+    background: var(--crust); border: 1px solid var(--surface1);
+    border-radius: var(--radius); overflow: hidden;
+    display: flex; flex-direction: column;
+    min-height: 460px;
+  }
+  .home-preview-header {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    background: var(--mantle); border-bottom: 1px solid var(--surface1);
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    color: var(--subtext0); letter-spacing: 0.4px;
+  }
+  .home-preview-header svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .home-preview-header .spacer { flex: 1; }
+  .home-preview-header .btn-mini {
+    padding: 3px 10px; font-size: 10px; background: transparent;
+    border: 1px solid var(--surface1); color: var(--subtext0);
+    border-radius: 3px; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .home-preview-header .btn-mini:hover { border-color: var(--accent); color: var(--text); }
+  .home-preview-viewport {
+    position: relative;
+    flex: 1; min-height: 420px;
+    background: #fff; overflow: auto;
+  }
+  .home-preview-frame {
+    position: absolute;
+    top: 0; left: 0;
+    width: 1280px;
+    height: 800px;
+    border: none;
+    transform-origin: 0 0;
+    /* scale set inline via JS based on container width */
+  }
+  .home-preview-viewport.loading::before {
+    content: 'Loading preview...';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #888; font: 11px var(--font-ui);
+    background: var(--crust);
+    z-index: 2;
+  }
+  .home-quick-actions {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+  }
+  .home-action {
+    background: var(--surface0); border: 1px solid var(--surface1);
+    border-radius: var(--radius); padding: 12px 14px;
+    cursor: pointer; text-align: left;
+    font-size: 12px; color: var(--text);
+    display: flex; align-items: center; gap: 10px;
+    transition: border-color 0.12s;
+  }
+  .home-action:hover { border-color: var(--accent); }
+  .home-action svg { width: 14px; height: 14px; color: var(--subtext0); flex-shrink: 0; }
+  .home-action strong { display: block; font-weight: 600; margin-bottom: 1px; }
+  .home-action .home-action-hint { display: block; font-size: 10px; color: var(--subtext0); }
+  .home-bridge-banner {
+    background: rgba(250, 179, 135, 0.08);
+    border: 1px solid rgba(250, 179, 135, 0.3);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 12px; color: var(--text);
+  }
+  .home-bridge-banner svg { width: 16px; height: 16px; color: var(--peach); flex-shrink: 0; }
+  .home-bridge-banner .spacer { flex: 1; }
+  .home-bridge-banner code {
+    font-family: var(--font-mono); font-size: 10px; color: var(--subtext1);
+    background: var(--surface0); padding: 2px 6px; border-radius: 3px;
+  }
+
+  /* ── Modal (replacement for window.prompt / window.confirm) ──── */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 3000;
+    background: rgba(0,0,0,0.55);
+    display: none; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--mantle); border: 1px solid var(--surface1);
+    border-radius: var(--radius-lg, 8px);
+    width: 100%; max-width: 440px; max-height: 90vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    overflow: hidden;
+  }
+  .modal-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--surface0);
+    font-size: 13px; font-weight: 600; color: var(--text);
+  }
+  .modal-body { padding: 16px; overflow-y: auto; font-size: 12px; color: var(--subtext1); }
+  .modal-body .field { margin-bottom: 0; }
+  .modal-body .field label {
+    display: block; font-size: 10px; font-weight: 600; color: var(--subtext0);
+    text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;
+  }
+  .modal-body .field input, .modal-body .field textarea {
+    width: 100%; padding: 8px 10px; background: var(--surface0);
+    border: 1px solid var(--surface1); border-radius: var(--radius);
+    color: var(--text); font: 12px var(--font-ui); outline: none;
+  }
+  .modal-body .field input:focus, .modal-body .field textarea:focus { border-color: var(--accent); }
+  .modal-actions {
+    display: flex; gap: 8px; padding: 12px 16px;
+    border-top: 1px solid var(--surface0); justify-content: flex-end;
+  }
+  .modal-actions .spacer { flex: 1; }
+
+  /* ── AI action buttons (send-to-ai highlight) ────────────────── */
+  .btn.ai {
+    background: linear-gradient(135deg, rgba(var(--plugin-tint, 137, 180, 250), 0.18), rgba(var(--plugin-tint, 137, 180, 250), 0.08));
+    border-color: rgba(var(--plugin-tint, 137, 180, 250), 0.45);
+    color: var(--text);
+  }
+  .btn.ai:hover { border-color: rgba(var(--plugin-tint, 137, 180, 250), 0.8); }
+  .btn.builder {
+    background: var(--surface0);
+    border-color: var(--surface1);
+  }
+  .btn.builder:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ── Skeleton loaders ────────────────────────────────────────── */
+  @keyframes skeleton-shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  .skeleton {
+    background-color: var(--surface0);
+    background-image: linear-gradient(90deg,
+      transparent 0,
+      rgba(255,255,255,0.04) 40%,
+      rgba(255,255,255,0.08) 50%,
+      rgba(255,255,255,0.04) 60%,
+      transparent 100%);
+    background-size: 400px 100%;
+    background-repeat: no-repeat;
+    animation: skeleton-shimmer 1.2s linear infinite;
+    border-radius: 4px;
+  }
+  .skeleton-list { padding: 0; }
+  .skeleton-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--surface0);
+  }
+  .skeleton-row .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .skeleton-row .title { flex: 1; height: 11px; max-width: 60%; }
+  .skeleton-row .badge { width: 44px; height: 14px; }
+  .skeleton-row .meta { width: 58px; height: 10px; }
+  .skeleton-grid {
+    padding: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 8px;
+  }
+  .skeleton-card {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    border-radius: 4px;
+  }
+  .skeleton-block { width: 100%; height: 14px; margin-bottom: 8px; }
+  .skeleton-block.sm { height: 10px; width: 60%; }
 
   /* ── Responsive ──────────────────────────────────────────────── */
   @media (max-width: 900px) {
-    .detail { width: 380px; }
+    .preview-viewport { height: 200px; }
   }
   @media (max-width: 768px) {
-    .sidebar { width: 48px; }
-    .sidebar .nav-label, .sidebar .nav-count { display: none; }
+    .sidebar { flex: 0 0 48px; min-width: 48px; max-width: 48px; }
+    .sidebar .nav-label, .sidebar .nav-count, .nav-group-label { display: none; }
     .nav-item { justify-content: center; padding: 10px 0; }
     .detail {
       position: fixed; top: 42px; right: 0; bottom: 0; left: 0;
-      width: auto; z-index: 50; border-left: none;
+      min-width: 0; z-index: 50; border-left: none;
       transform: translateX(100%); transition: transform 0.25s ease;
     }
     .detail.open { transform: translateX(0); }
     .site-label { max-width: 120px; }
+    .site-select { max-width: 140px; }
   }
   @media (max-width: 480px) {
-    .media-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+    .media-grid { grid-template-columns: repeat(auto-fill, minmax(min(70px, 100%), 1fr)); }
     .toolbar { padding: 0 8px; }
     .btn .btn-label { display: none; }
   }
@@ -268,62 +665,20 @@
     WordPress
   </div>
   <span class="conn-dot pending" id="connDot" title="Connection status"></span>
-  <span class="site-label" id="siteLabel">not configured</span>
+  <select class="site-select" id="siteSelect" title="Switch site">
+    <option value="">not configured</option>
+  </select>
   <div class="spacer"></div>
   <button class="btn" id="refreshBtn" title="Refresh">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
     <span class="btn-label">Refresh</span>
   </button>
-  <button class="btn primary" id="newBtn">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-    <span class="btn-label">New</span>
-  </button>
-  <div class="sep"></div>
-  <button class="btn btn-icon" id="settingsBtn" title="Settings">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-  </button>
 </div>
 
 <!-- ── Main area ─────────────────────────────────────────── -->
-<div class="main">
-  <!-- Sidebar -->
-  <div class="sidebar" id="sidebar">
-    <div class="nav-item active" data-section="posts">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-      <span class="nav-label">Posts</span>
-      <span class="nav-count" id="count-posts"></span>
-    </div>
-    <div class="nav-item" data-section="pages">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
-      <span class="nav-label">Pages</span>
-      <span class="nav-count" id="count-pages"></span>
-    </div>
-    <div class="nav-item" data-section="media">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-      <span class="nav-label">Media</span>
-      <span class="nav-count" id="count-media"></span>
-    </div>
-    <div class="nav-item" data-section="comments">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-      <span class="nav-label">Comments</span>
-      <span class="nav-count" id="count-comments"></span>
-    </div>
-    <div class="nav-item" data-section="categories">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-      <span class="nav-label">Categories</span>
-      <span class="nav-count" id="count-categories"></span>
-    </div>
-    <div class="nav-item" data-section="tags">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
-      <span class="nav-label">Tags</span>
-      <span class="nav-count" id="count-tags"></span>
-    </div>
-    <div class="nav-item" data-section="users">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-      <span class="nav-label">Users</span>
-      <span class="nav-count" id="count-users"></span>
-    </div>
-  </div>
+<div class="main no-detail" id="mainArea">
+  <!-- Sidebar (populated dynamically from /discover) -->
+  <div class="sidebar" id="sidebar"></div>
 
   <!-- Content -->
   <div class="content">
@@ -357,37 +712,22 @@
       <div class="tab" data-tab="meta">Meta</div>
     </div>
     <div class="detail-body" id="detailBody"></div>
+    <!-- Fixed preview strip: always visible, outside the scrollable body.
+         Populated by renderPreviewPanel() when the current item has a public link. -->
+    <div class="detail-preview-wrap" id="detailPreviewWrap"></div>
     <div class="detail-actions" id="detailActions"></div>
   </div>
 </div>
 
-<!-- ── Config modal ──────────────────────────────────────── -->
-<div class="modal-overlay" id="configModal">
+<!-- Modal overlay (replaces window.prompt / window.confirm which Electron blocks) -->
+<div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true">
   <div class="modal">
-    <div class="modal-header">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-      WordPress Settings
-    </div>
-    <div class="modal-body">
-      <div class="field">
-        <label>Site URL</label>
-        <input type="url" id="cfgSiteUrl" placeholder="https://example.com">
-        <div class="field-hint">Root URL, no trailing slash</div>
-      </div>
-      <div class="field">
-        <label>Username</label>
-        <input type="text" id="cfgUsername" placeholder="admin">
-        <div class="field-hint">Your wp-admin login name</div>
-      </div>
-      <div class="field">
-        <label>Application Password</label>
-        <input type="text" id="cfgAppPassword" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx">
-        <div class="field-hint">Create in wp-admin under Users &gt; Profile &gt; Application Passwords. Keep the spaces.</div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" id="cfgCancel">Cancel</button>
-      <button class="btn primary" id="cfgSave">Save &amp; test</button>
+    <div class="modal-header" id="modalTitle">Title</div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-actions">
+      <div class="spacer"></div>
+      <button class="btn" id="modalCancel">Cancel</button>
+      <button class="btn primary" id="modalConfirm">OK</button>
     </div>
   </div>
 </div>
@@ -397,22 +737,77 @@
 <script>
 const API = '/api/plugins/wordpress';
 
+// ── SVG icon library (Feather-compatible) ─────────────────
+const ICONS = {
+  'file-text': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>',
+  'file': '<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline>',
+  'image': '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>',
+  'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',
+  'folder': '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>',
+  'tag': '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line>',
+  'users': '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+  'shopping-bag': '<path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path>',
+  'layout': '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line>',
+  'briefcase': '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>',
+  'grid': '<rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>',
+  'compass': '<circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>',
+  'clipboard': '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>',
+  'calendar': '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>',
+  'star': '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>',
+  'help-circle': '<circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line>',
+  'menu': '<line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line>',
+  'box': '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>',
+  'eye': '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>',
+  'code': '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>',
+  'maximize': '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>',
+  'rotate-ccw': '<polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>',
+  'save': '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline>',
+  'zoom-in': '<circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line>',
+  'zoom-out': '<circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line>',
+};
+function icon(name) {
+  const d = ICONS[name] || ICONS['box'];
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+}
+
+// ── State ──────────────────────────────────────────────────
 const state = {
-  section: 'posts',
+  section: null,     // { kind: 'postType' | 'taxonomy' | 'comments' | 'users', slug, restBase, label }
   items: [],
-  cats: [],
-  tagsList: [],
-  mediaList: [],
-  usersList: [],
   selected: null,
   editing: null,
   configured: false,
   cfg: null,
   search: '',
   status: 'any',
+  discovery: null,   // result from /discover
+  rte: null,         // active Quill instance
+  detectedPlugins: [], // [{ id, label, capabilities }] -- site-level detection
 };
 
-// ── Helpers ────────────────────────────────────────────────
+// Detect which page builder an item uses, if any.
+// Checks meta fields first (most reliable), falls back to site-level detection.
+function detectBuilderForItem(p) {
+  if (!p) return null;
+  const meta = p.meta || {};
+  if (meta._elementor_edit_mode === 'builder' || meta._elementor_data) return 'elementor';
+  if (meta._breakdance_data || meta.breakdance_data) return 'breakdance';
+  // Fall through: we can't be sure from just the meta we receive (WP may
+  // not expose these unless the field is registered in REST). The Open
+  // buttons below will still be offered if the site-wide plugin is detected.
+  return null;
+}
+function hasSitePlugin(id) {
+  return (state.detectedPlugins || []).some(p => p.id === id);
+}
+function builderEditUrl(builder, siteUrl, postId) {
+  const base = (siteUrl || '').replace(/\/+$/, '');
+  if (builder === 'elementor') return base + '/wp-admin/post.php?post=' + postId + '&action=elementor';
+  if (builder === 'breakdance') return base + '/?breakdance=builder&id=' + postId;
+  return base + '/wp-admin/post.php?post=' + postId + '&action=edit';
+}
+
+// ── API helper ─────────────────────────────────────────────
 async function api(path, opts) {
   opts = opts || {};
   const r = await fetch(API + path, {
@@ -432,6 +827,140 @@ function toast(msg, level) {
   setTimeout(() => { t.className = 'toast'; }, 3000);
 }
 
+// ── Modal helpers (Electron blocks window.prompt / window.confirm) ──
+// askInput({ title, label, placeholder, defaultValue, multiline, confirmText })
+//   resolves with the string (or null if cancelled)
+// askConfirm({ title, message, confirmText, danger })
+//   resolves with true / false
+function askInput(opts) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('modalOverlay');
+    document.getElementById('modalTitle').textContent = opts.title || 'Input';
+    const id = 'modalInput_' + Date.now();
+    const inputTag = opts.multiline
+      ? `<textarea id="${id}" rows="5" placeholder="${esc(opts.placeholder || '')}">${esc(opts.defaultValue || '')}</textarea>`
+      : `<input type="text" id="${id}" placeholder="${esc(opts.placeholder || '')}" value="${esc(opts.defaultValue || '')}">`;
+    document.getElementById('modalBody').innerHTML =
+      '<div class="field">' +
+        (opts.label ? '<label>' + esc(opts.label) + '</label>' : '') +
+        inputTag +
+      '</div>';
+    const confirmBtn = document.getElementById('modalConfirm');
+    const cancelBtn = document.getElementById('modalCancel');
+    confirmBtn.textContent = opts.confirmText || 'OK';
+    confirmBtn.classList.remove('danger');
+    confirmBtn.classList.add('primary');
+    overlay.classList.add('show');
+    const input = document.getElementById(id);
+    setTimeout(() => { input.focus(); if (input.select) input.select(); }, 30);
+    const cleanup = (val) => {
+      overlay.classList.remove('show');
+      confirmBtn.onclick = null;
+      cancelBtn.onclick = null;
+      overlay.onclick = null;
+      document.onkeydown = null;
+      resolve(val);
+    };
+    confirmBtn.onclick = () => cleanup(input.value);
+    cancelBtn.onclick = () => cleanup(null);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(null); };
+    document.onkeydown = (e) => {
+      if (e.key === 'Escape') cleanup(null);
+      else if (e.key === 'Enter' && !opts.multiline) { e.preventDefault(); cleanup(input.value); }
+    };
+  });
+}
+
+function askConfirm(opts) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('modalOverlay');
+    document.getElementById('modalTitle').textContent = opts.title || 'Confirm';
+    document.getElementById('modalBody').innerHTML =
+      '<div style="line-height:1.55;color:var(--text);">' + esc(opts.message || '') + '</div>';
+    const confirmBtn = document.getElementById('modalConfirm');
+    const cancelBtn = document.getElementById('modalCancel');
+    confirmBtn.textContent = opts.confirmText || 'Confirm';
+    confirmBtn.classList.toggle('danger', !!opts.danger);
+    confirmBtn.classList.toggle('primary', !opts.danger);
+    overlay.classList.add('show');
+    setTimeout(() => confirmBtn.focus(), 30);
+    const cleanup = (val) => {
+      overlay.classList.remove('show');
+      confirmBtn.onclick = null;
+      cancelBtn.onclick = null;
+      overlay.onclick = null;
+      document.onkeydown = null;
+      resolve(val);
+    };
+    confirmBtn.onclick = () => cleanup(true);
+    cancelBtn.onclick = () => cleanup(false);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+    document.onkeydown = (e) => {
+      if (e.key === 'Escape') cleanup(false);
+      else if (e.key === 'Enter') { e.preventDefault(); cleanup(true); }
+    };
+  });
+}
+
+// ── Host bridge helpers ────────────────────────────────────
+// Ask the parent dashboard to dispatch a prompt to the AI terminal.
+function sendToAi(prompt) {
+  try {
+    if (window.DevOpsPilot && typeof window.DevOpsPilot.askAi === 'function') {
+      window.DevOpsPilot.askAi(prompt);
+    } else {
+      window.parent.postMessage({ __devopsPilot: true, type: 'askAi', prompt: prompt }, location.origin);
+    }
+  } catch (_) {}
+}
+
+// Build a summary of the current item that the AI can reason about.
+function summarizeContentForAi(p, section) {
+  const title = stripHtml(titleOf(p)) || '(untitled)';
+  const type = (section && section.label) || 'post';
+  const excerpt = stripHtml((p.excerpt && (p.excerpt.raw || p.excerpt.rendered)) || '').slice(0, 400);
+  const link = p.link || '';
+  const siteUrl = (state.cfg && state.cfg.siteUrl) || '';
+  const builder = detectBuilderForItem(p);
+  return {
+    title, type, excerpt, link, siteUrl,
+    id: p.id,
+    restBase: section && section.restBase,
+    status: p.status,
+    builder,
+  };
+}
+
+function buildAiPrompt(action, info) {
+  const base =
+    'I am working on a WordPress ' + info.type + ' via the DevOps Pilot WordPress plugin.\n' +
+    'Title: ' + info.title + '\n' +
+    'ID: ' + info.id + ' (rest base: ' + info.restBase + ')\n' +
+    'Status: ' + info.status + '\n' +
+    (info.link ? 'Public URL: ' + info.link + '\n' : '') +
+    (info.builder ? 'Page builder: ' + info.builder + '\n' : '') +
+    (info.excerpt ? 'Excerpt: ' + info.excerpt + '\n' : '');
+  if (action === 'edit') {
+    return base + '\nPlease help me edit this ' + info.type + '. ' +
+      'You can read/write it via GET/POST/PUT http://127.0.0.1:3800/api/plugins/wordpress/content/' +
+      info.restBase + '/' + info.id + '. ' +
+      'If it uses Elementor or Breakdance, use the relevant plugin endpoints (see /api/plugins/instructions). ' +
+      'First ask me what I want changed, unless I already gave you instructions.';
+  }
+  if (action === 'clone') {
+    return base + '\nI want to clone this ' + info.type + ' and adapt it for a different target. ' +
+      'Read the full content via GET /api/plugins/wordpress/content/' + info.restBase + '/' + info.id + ', ' +
+      'create a new draft with POST /api/plugins/wordpress/content/' + info.restBase + ', ' +
+      'then adapt the fields. Ask me what the new target is before starting.';
+  }
+  if (action === 'debug') {
+    return base + '\nSomething is wrong with this ' + info.type + '. Please help me debug. ' +
+      'Read the content and meta, check for broken shortcodes, missing featured media, ' +
+      'SEO issues, and any page-builder-specific problems. Report findings before changing anything.';
+  }
+  return base;
+}
+
 function esc(s) {
   if (s == null) return '';
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -448,136 +977,550 @@ function titleOf(item) {
   return (item && item.title && (item.title.rendered || item.title.raw || item.title)) || '(no title)';
 }
 
+// ── Site selector ──────────────────────────────────────────
+async function loadSiteSelector() {
+  const sel = document.getElementById('siteSelect');
+  try {
+    const r = await api('/sites');
+    const sites = (r.data && r.data.sites) || [];
+    const active = (r.data && r.data.activeSite) || '';
+    sel.innerHTML = '';
+    if (!sites.length) {
+      sel.innerHTML = '<option value="">no sites configured</option>';
+      return;
+    }
+    sites.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.name;
+      opt.textContent = s.name;
+      if (s.name === active) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } catch (_) {
+    sel.innerHTML = '<option value="">error loading sites</option>';
+  }
+}
+
+document.getElementById('siteSelect').addEventListener('change', async (e) => {
+  const name = e.target.value;
+  if (!name) return;
+  await api('/sites/active', { method: 'POST', body: { name } });
+  await checkConnection();
+  if (state.configured) {
+    await loadDiscovery();
+    if (state.section) loadSection();
+  }
+});
+
 // ── Connection ─────────────────────────────────────────────
 async function checkConnection() {
   const dot = document.getElementById('connDot');
-  const label = document.getElementById('siteLabel');
+  const sel = document.getElementById('siteSelect');
   dot.className = 'conn-dot pending';
+  await loadSiteSelector();
   const cfgR = await api('/config');
   state.cfg = cfgR.data;
   if (!cfgR.data || !cfgR.data.configured) {
     dot.className = 'conn-dot err';
-    label.textContent = 'not configured';
     state.configured = false;
-    openConfig();
+    renderNotConfigured();
     return false;
   }
   const testR = await api('/test');
   if (testR.data && testR.data.ok) {
     dot.className = 'conn-dot ok';
-    label.textContent = cfgR.data.siteUrl.replace(/^https?:\/\//, '');
-    label.title = cfgR.data.siteUrl + ' (' + testR.data.user.name + ')';
+    sel.title = cfgR.data.siteUrl + ' (' + testR.data.user.name + ')';
     state.configured = true;
     return true;
   } else {
     dot.className = 'conn-dot err';
-    label.textContent = 'auth failed';
-    label.title = (testR.data && testR.data.error) || '';
+    sel.title = (testR.data && testR.data.error) || 'auth failed';
     state.configured = false;
+    renderAuthFailed((testR.data && testR.data.error) || '');
     return false;
   }
 }
 
-// ── Config modal ───────────────────────────────────────────
-function openConfig() {
-  document.getElementById('cfgSiteUrl').value = (state.cfg && state.cfg.siteUrl) || '';
-  document.getElementById('cfgUsername').value = (state.cfg && state.cfg.username) || '';
-  document.getElementById('cfgAppPassword').value = '';
-  document.getElementById('configModal').classList.add('show');
+function openMainSettings() {
+  try {
+    window.parent.postMessage({
+      __devopsPilot: true,
+      type: 'openSettings',
+      tab: 'plugins',
+      plugin: 'wordpress',
+    }, location.origin);
+  } catch (_) {}
 }
-function closeConfig() { document.getElementById('configModal').classList.remove('show'); }
 
-document.getElementById('settingsBtn').addEventListener('click', openConfig);
-document.getElementById('cfgCancel').addEventListener('click', closeConfig);
-document.getElementById('cfgSave').addEventListener('click', async () => {
-  const siteUrl = document.getElementById('cfgSiteUrl').value.trim();
-  const username = document.getElementById('cfgUsername').value.trim();
-  const appPassword = document.getElementById('cfgAppPassword').value.trim();
-  if (!siteUrl || !username || !appPassword) {
-    toast('All fields required', 'err'); return;
-  }
-  const r = await api('/config', { method: 'POST', body: { siteUrl, username, appPassword } });
-  if (r.data && r.data.ok) {
-    toast('Saved, testing connection...', 'ok');
-    closeConfig();
-    const ok = await checkConnection();
-    if (ok) { loadSection(state.section); loadCounts(); }
-  } else {
-    toast('Save failed', 'err');
-  }
-});
+function renderNotConfigured() {
+  document.getElementById('sidebar').innerHTML = '';
+  const list = document.getElementById('listContainer');
+  list.className = 'list';
+  list.innerHTML = '<div class="empty">' +
+    icon('eye') +
+    '<h3>No WordPress site configured</h3>' +
+    '<p>Open Settings and go to Plugins, then WordPress, to add a site with its URL, username, and application password.</p>' +
+    '<button class="btn primary" onclick="openMainSettings()">Open Settings</button>' +
+    '</div>';
+  document.getElementById('resultCount').textContent = '';
+}
 
-// ── Navigation ─────────────────────────────────────────────
-document.querySelectorAll('.nav-item').forEach(item => {
-  item.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-    item.classList.add('active');
-    state.section = item.dataset.section;
-    closeDetail();
-    loadSection(state.section);
+function renderAuthFailed(err) {
+  const list = document.getElementById('listContainer');
+  list.className = 'list';
+  list.innerHTML = '<div class="empty">' +
+    icon('help-circle') +
+    '<h3>WordPress authentication failed</h3>' +
+    '<p>' + esc(err || 'The saved credentials were rejected by the WordPress site.') + '</p>' +
+    '<button class="btn primary" onclick="openMainSettings()">Open Settings</button>' +
+    '</div>';
+  document.getElementById('resultCount').textContent = '';
+}
+
+// ── Dynamic sidebar from /discover ────────────────────────
+async function loadDiscovery() {
+  const sb = document.getElementById('sidebar');
+  sb.innerHTML = '<div class="nav-group-label">Loading...</div>' +
+    Array.from({ length: 6 }).map(() => '<div class="nav-item"><div class="skeleton" style="height:12px;width:100%;"></div></div>').join('');
+
+  const r = await api('/discover');
+  if (r.status >= 400 || !r.data) {
+    sb.innerHTML = '<div class="nav-group-label" style="color:var(--red)">Discovery failed</div>';
+    return;
+  }
+  state.discovery = r.data;
+  state.detectedPlugins = Array.isArray(r.data.plugins) ? r.data.plugins : [];
+  renderSidebar(r.data);
+}
+
+function renderSidebar(d) {
+  const sb = document.getElementById('sidebar');
+  const chunks = [];
+
+  // Home (site overview) -- always at the top, auto-selected on first load
+  chunks.push(navItemHtml('home', 'home', '', 'Home', null, 'compass'));
+
+  // Content: post types (hide if count==0 unless core post/page)
+  const contentTypes = (d.postTypes || []).filter(pt => {
+    if (pt.slug === 'attachment') return false;
+    if (pt.slug === 'post' || pt.slug === 'page') return true; // always show core
+    return pt.count > 0;
   });
-});
-
-// ── Load counts for sidebar ────────────────────────────────
-async function loadCounts() {
-  if (!state.configured) return;
-  const types = [
-    { id: 'posts', path: '/posts?per_page=1&_fields=id&status=any' },
-    { id: 'pages', path: '/pages?per_page=1&_fields=id&status=any' },
-    { id: 'media', path: '/media?per_page=1&_fields=id' },
-    { id: 'comments', path: '/comments?per_page=1&_fields=id' },
-    { id: 'categories', path: '/categories?per_page=1&_fields=id' },
-    { id: 'tags', path: '/tags?per_page=1&_fields=id' },
-    { id: 'users', path: '/users?per_page=1&_fields=id' },
-  ];
-  for (const t of types) {
-    const r = await api(t.path);
-    const count = (r.data && r.data.total) || (Array.isArray(r.data) ? r.data.length : '');
-    const el = document.getElementById('count-' + t.id);
-    if (el) el.textContent = count || '';
+  if (contentTypes.length) {
+    chunks.push('<div class="nav-group-label">Content</div>');
+    for (const pt of contentTypes) {
+      chunks.push(navItemHtml('postType', pt.slug, pt.restBase, pt.label, pt.count, pt.icon));
+    }
   }
+
+  // Media (always visible)
+  const attach = (d.postTypes || []).find(pt => pt.slug === 'attachment');
+  chunks.push('<div class="nav-group-label">Library</div>');
+  chunks.push(navItemHtml('media', 'media', 'media', 'Media', (attach && attach.count) || 0, 'image'));
+
+  // Comments (hide if zero)
+  if (d.commentCount > 0) {
+    chunks.push(navItemHtml('comments', 'comments', 'comments', 'Comments', d.commentCount, 'message-square'));
+  }
+
+  // Taxonomies (hide empty; skip nav_menu and post_format which are system)
+  const taxonomies = (d.taxonomies || []).filter(tx => {
+    if (tx.slug === 'nav_menu' || tx.slug === 'link_category' || tx.slug === 'post_format') return false;
+    return tx.count > 0;
+  });
+  if (taxonomies.length) {
+    chunks.push('<div class="nav-group-label">Taxonomies</div>');
+    for (const tx of taxonomies) {
+      const ic = tx.slug === 'category' ? 'folder' : (tx.slug === 'post_tag' ? 'tag' : 'folder');
+      chunks.push(navItemHtml('taxonomy', tx.slug, tx.restBase, tx.label, tx.count, ic));
+    }
+  }
+
+  // People (users -- hide if only 1)
+  if (d.userCount >= 1) {
+    chunks.push('<div class="nav-group-label">People</div>');
+    chunks.push(navItemHtml('users', 'users', 'users', 'Users', d.userCount, 'users'));
+  }
+
+  // Detected plugins (informational only for now)
+  if (d.plugins && d.plugins.length) {
+    chunks.push('<div class="nav-group-label" title="Detected via REST namespaces">Plugins</div>');
+    for (const p of d.plugins) {
+      chunks.push('<div class="nav-item" style="cursor:default;opacity:0.8" title="' + esc(p.id) + '">' +
+        icon('box') +
+        '<span class="nav-label">' + esc(p.label) + '</span>' +
+        '</div>');
+    }
+  }
+
+  sb.innerHTML = chunks.join('');
+
+  // Wire up clicks
+  sb.querySelectorAll('.nav-item[data-kind]').forEach(el => {
+    el.addEventListener('click', () => selectSection({
+      kind: el.dataset.kind,
+      slug: el.dataset.slug,
+      restBase: el.dataset.restbase,
+      label: el.dataset.label,
+    }));
+  });
+
+  // Auto-select Home on first load so new users land on a friendly dashboard
+  if (!state.section) {
+    const home = sb.querySelector('.nav-item[data-kind="home"]');
+    if (home) { home.click(); }
+  } else {
+    // Re-apply active state
+    const active = sb.querySelector('.nav-item[data-kind="' + state.section.kind + '"][data-slug="' + state.section.slug + '"]');
+    if (active) active.classList.add('active');
+  }
+}
+
+function navItemHtml(kind, slug, restBase, label, count, iconName) {
+  return '<div class="nav-item" data-kind="' + esc(kind) + '" data-slug="' + esc(slug) + '" data-restbase="' + esc(restBase) + '" data-label="' + esc(label) + '">' +
+    icon(iconName || 'box') +
+    '<span class="nav-label">' + esc(label) + '</span>' +
+    (count != null ? '<span class="nav-count">' + esc(String(count)) + '</span>' : '') +
+    '</div>';
+}
+
+function selectSection(section) {
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  const el = document.querySelector('.nav-item[data-kind="' + section.kind + '"][data-slug="' + section.slug + '"]');
+  if (el) el.classList.add('active');
+  state.section = section;
+  state.selected = null;
+  state.editing = null;
+  closeDetail();
+  // When moving away from Home, make sure the filter bar comes back
+  if (section.kind !== 'home') leaveHome();
+  loadSection();
 }
 
 // ── Section loader ─────────────────────────────────────────
-async function loadSection(section) {
+async function loadSection() {
   const list = document.getElementById('listContainer');
-  list.className = section === 'media' ? 'media-grid' : 'list';
-  list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+  const section = state.section;
+  if (!section) { list.innerHTML = ''; return; }
+
+  // Home is a special full-width dashboard, not a list.
+  if (section.kind === 'home') {
+    renderHome();
+    return;
+  }
+
+  // Skeleton UI
+  if (section.slug === 'media') {
+    list.className = 'media-grid';
+    list.innerHTML = renderSkeletonGrid(24);
+  } else {
+    list.className = 'list';
+    list.innerHTML = renderSkeletonList(12);
+  }
 
   const q = state.search ? '&search=' + encodeURIComponent(state.search) : '';
-  const st = (section === 'posts' || section === 'pages') && state.status !== 'any'
-    ? '&status=' + state.status : '';
-
   let r;
   try {
-    if (section === 'posts') r = await api('/posts?per_page=30' + q + st);
-    else if (section === 'pages') r = await api('/pages?per_page=30' + q + st);
-    else if (section === 'media') r = await api('/media?per_page=30' + q);
-    else if (section === 'comments') r = await api('/comments?per_page=30' + q);
-    else if (section === 'categories') r = await api('/categories?per_page=100' + q);
-    else if (section === 'tags') r = await api('/tags?per_page=100' + q);
-    else if (section === 'users') r = await api('/users?per_page=50' + q);
+    if (section.kind === 'postType') {
+      const st = state.status !== 'any' ? '&status=' + state.status : '';
+      r = await api('/content/' + section.restBase + '?per_page=30' + q + st);
+    } else if (section.kind === 'media') {
+      r = await api('/media?per_page=30' + q);
+    } else if (section.kind === 'comments') {
+      r = await api('/comments?per_page=30' + q);
+    } else if (section.kind === 'taxonomy') {
+      r = await api('/content/' + section.restBase + '?per_page=100' + q);
+    } else if (section.kind === 'users') {
+      r = await api('/users?per_page=50' + q);
+    }
   } catch (e) { list.innerHTML = '<div class="empty"><p>Error: ' + esc(e.message) + '</p></div>'; return; }
 
   if (!r || r.status >= 400) {
     const err = (r && r.data && (r.data.error || r.data.message)) || 'Request failed';
-    list.innerHTML = '<div class="empty"><h3>Error</h3><p>' + esc(err) + '</p></div>';
+    list.innerHTML = '<div class="empty">' + icon('help-circle') + '<h3>Error</h3><p>' + esc(err) + '</p></div>';
     return;
   }
-
   const items = r.data.items || r.data || [];
   state.items = Array.isArray(items) ? items : [];
-  document.getElementById('resultCount').textContent = state.items.length + (r.data.total ? ' / ' + r.data.total : '') + ' items';
+  document.getElementById('resultCount').textContent = state.items.length +
+    (r.data && r.data.total ? ' / ' + r.data.total : '') + ' items';
 
-  if (section === 'media') renderMediaGrid(state.items);
-  else if (section === 'posts' || section === 'pages') renderPostList(state.items);
-  else if (section === 'comments') renderCommentList(state.items);
-  else if (section === 'categories' || section === 'tags') renderTermList(state.items);
-  else if (section === 'users') renderUserList(state.items);
+  if (section.kind === 'media') renderMediaGrid(state.items);
+  else if (section.kind === 'postType') renderPostLikeList(state.items);
+  else if (section.kind === 'comments') renderCommentList(state.items);
+  else if (section.kind === 'taxonomy') renderTermList(state.items);
+  else if (section.kind === 'users') renderUserList(state.items);
+}
+
+// ── Home dashboard ─────────────────────────────────────────
+// Turns the narrow list column + detail column into a single wide dashboard.
+// Data comes from /site/health plus the existing /discover response.
+async function renderHome() {
+  // Close any open detail panel so the home fills the whole right side
+  closeDetail();
+  const mainEl = document.getElementById('mainArea');
+  mainEl.classList.add('no-detail');
+
+  const list = document.getElementById('listContainer');
+  list.className = 'home';
+  // Hide the filter bar and result count for home
+  const filterBar = list.previousElementSibling;
+  if (filterBar && filterBar.classList.contains('filter-bar')) filterBar.style.display = 'none';
+  document.getElementById('resultCount').textContent = '';
+
+  list.innerHTML =
+    '<div class="home-header">' +
+      '<div><h1 class="home-title">Loading...</h1><div class="home-subtitle" id="homeSubtitle"></div></div>' +
+    '</div>' +
+    '<div class="home-grid" id="homeCounts">' +
+      Array.from({ length: 5 }).map(() =>
+        '<div class="home-card"><div class="skeleton" style="height:10px;width:40%;margin-bottom:8px"></div>' +
+        '<div class="skeleton" style="height:22px;width:50%"></div></div>'
+      ).join('') +
+    '</div>' +
+    '<div id="homeBridge"></div>' +
+    '<div class="home-section-title">Quick actions</div>' +
+    '<div class="home-quick-actions" id="homeActions"></div>' +
+    '<div class="home-section-title">Detected integrations</div>' +
+    '<div class="home-plugins" id="homePlugins"></div>' +
+    '<div class="home-section-title">Issues</div>' +
+    '<div class="home-issues" id="homeIssues"><div class="home-issue info">Scanning site...</div></div>' +
+    '<div class="home-section-title">Live preview</div>' +
+    '<div class="home-preview" id="homePreview">' +
+      '<div class="home-preview-header">' +
+        icon('eye') + ' Homepage' +
+        '<div class="spacer"></div>' +
+        '<button class="btn-mini" id="homePreviewZoomOut" title="Zoom out">' + icon('zoom-out') + '</button>' +
+        '<span class="preview-zoom-label" id="homePreviewZoomLabel">100%</span>' +
+        '<button class="btn-mini" id="homePreviewZoomIn" title="Zoom in">' + icon('zoom-in') + '</button>' +
+        '<button class="btn-mini" id="homePreviewReload">Reload</button>' +
+        '<button class="btn-mini" id="homePreviewOpen">Open site</button>' +
+      '</div>' +
+      '<div class="home-preview-viewport loading" id="homePreviewViewport">' +
+        '<iframe class="home-preview-frame" id="homePreviewFrame" sandbox="allow-same-origin allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe>' +
+      '</div>' +
+    '</div>';
+
+  // Kick off the health fetch + bridge check in parallel with the preview
+  const healthP = api('/site/health');
+  const bridgeP = api('/bridge/status');
+
+  // Wire preview immediately (uses the cfg we already have)
+  const siteUrl = (state.cfg && state.cfg.siteUrl) || '';
+  if (siteUrl) {
+    const vp = document.getElementById('homePreviewViewport');
+    const frame = document.getElementById('homePreviewFrame');
+    const setSrc = () => {
+      vp.classList.add('loading');
+      frame.src = API + '/preview?url=' + encodeURIComponent(siteUrl) + '&t=' + Date.now();
+    };
+    frame.onload = () => { vp.classList.remove('loading'); scaleHomePreview(); };
+    frame.onerror = () => { vp.classList.remove('loading'); };
+    setSrc();
+    document.getElementById('homePreviewReload').addEventListener('click', setSrc);
+    document.getElementById('homePreviewOpen').addEventListener('click', () => window.open(siteUrl, '_blank'));
+    document.getElementById('homePreviewZoomIn').addEventListener('click', () => adjustHomePreviewZoom(0.1));
+    document.getElementById('homePreviewZoomOut').addEventListener('click', () => adjustHomePreviewZoom(-0.1));
+  }
+
+  // Render quick actions
+  renderHomeQuickActions();
+
+  // Fill plugins from existing discovery (fast, already cached)
+  renderHomePlugins(state.detectedPlugins || []);
+
+  // Wait for health + bridge
+  const [health, bridge] = await Promise.all([healthP, bridgeP]);
+  if (health.status < 400 && health.data) {
+    renderHomeHealth(health.data);
+  } else {
+    document.getElementById('homeCounts').innerHTML =
+      '<div class="home-card warn"><div class="label">Error</div><div class="hint">Could not fetch site health: ' +
+      esc((health.data && health.data.error) || 'unknown') + '</div></div>';
+  }
+  if (bridge.status < 400 && bridge.data) {
+    renderHomeBridgeBanner(bridge.data);
+  }
+}
+
+function renderHomeHealth(h) {
+  const title = document.getElementById('homeTitle');
+  document.querySelector('.home-title').textContent = (h.site && h.site.name) || 'WordPress site';
+  document.getElementById('homeSubtitle').textContent = (h.site && h.site.description) || (h.site && h.site.url) || '';
+
+  const counts = h.counts || {};
+  const cards = [
+    { label: 'Posts', value: counts.posts || 0, kind: 'postType', slug: 'post', restBase: 'posts', ptLabel: 'Posts' },
+    { label: 'Pages', value: counts.pages || 0, kind: 'postType', slug: 'page', restBase: 'pages', ptLabel: 'Pages' },
+    { label: 'Media', value: counts.media || 0, kind: 'media', slug: 'media', restBase: 'media', ptLabel: 'Media' },
+    { label: 'Drafts', value: counts.drafts || 0, warn: counts.drafts > 10 },
+    { label: 'Pending comments', value: counts.pendingComments || 0, warn: counts.pendingComments > 0 },
+  ];
+  const host = document.getElementById('homeCounts');
+  host.innerHTML = cards.map(c =>
+    '<div class="home-card' + (c.warn ? ' warn' : '') + '"' +
+      (c.kind ? ' data-nav-kind="' + esc(c.kind) + '" data-nav-slug="' + esc(c.slug) + '" data-nav-restbase="' + esc(c.restBase) + '" data-nav-label="' + esc(c.ptLabel) + '"' : '') +
+      '>' +
+      '<div class="label">' + esc(c.label) + '</div>' +
+      '<div class="value">' + esc(String(c.value)) + '</div>' +
+    '</div>'
+  ).join('');
+  host.querySelectorAll('[data-nav-kind]').forEach(el => {
+    el.addEventListener('click', () => {
+      selectSection({
+        kind: el.dataset.navKind,
+        slug: el.dataset.navSlug,
+        restBase: el.dataset.navRestbase,
+        label: el.dataset.navLabel,
+      });
+    });
+  });
+
+  // Issues
+  const issuesHost = document.getElementById('homeIssues');
+  const issues = h.issues || [];
+  if (!issues.length) {
+    issuesHost.innerHTML = '<div class="home-issue info">No issues detected. Site looks healthy.</div>';
+  } else {
+    issuesHost.innerHTML = issues.map(i =>
+      '<div class="home-issue ' + esc(i.level || 'info') + '">' + esc(i.message) + '</div>'
+    ).join('');
+  }
+
+  // Plugins (health response has richer data than discovery sometimes)
+  if (h.plugins && h.plugins.length) renderHomePlugins(h.plugins);
+}
+
+function renderHomePlugins(plugins) {
+  const host = document.getElementById('homePlugins');
+  if (!host) return;
+  if (!plugins || !plugins.length) {
+    host.innerHTML = '<div class="home-subtitle">No integrations detected.</div>';
+    return;
+  }
+  host.innerHTML = plugins.map(p =>
+    '<span class="home-plugin">' + icon('box') + esc(p.label) + '</span>'
+  ).join('');
+}
+
+function renderHomeQuickActions() {
+  const host = document.getElementById('homeActions');
+  if (!host) return;
+  const askAi = async (title, label, placeholder, prefix) => {
+    const prompt = await askInput({
+      title, label, placeholder, multiline: true, confirmText: 'Send to AI',
+    });
+    if (!prompt) return;
+    const siteUrl = (state.cfg && state.cfg.siteUrl) || '';
+    const full =
+      'I am working on the WordPress site at ' + siteUrl + ' via the DevOps Pilot WordPress plugin.\n' +
+      'Full API reference: http://127.0.0.1:3800/api/plugins/instructions\n\n' +
+      prefix + '\n\nUser request: ' + prompt;
+    sendToAi(full);
+    toast('Sent to AI terminal', 'ok');
+  };
+  const actions = [
+    { label: 'Draft a new post', hint: 'Let AI write a blog post draft', icon: 'file-text',
+      onClick: () => askAi(
+        'Draft a new post',
+        'What should the post be about?',
+        'e.g. Five kitchen layouts that work for small spaces',
+        'Draft a new blog post as a draft on the site. Use the /content/posts endpoint with status=draft.'
+      ),
+    },
+    { label: 'Create a new page', hint: 'Let AI create a page', icon: 'file',
+      onClick: () => askAi(
+        'Create a new page',
+        'What should the page be about?',
+        'e.g. A showroom visit page with hours and map',
+        'Create a new page as a draft on the site. Use the /content/pages endpoint with status=draft.'
+      ),
+    },
+    { label: 'Browse media', hint: 'Open the media library', icon: 'image',
+      onClick: () => selectSection({ kind: 'media', slug: 'media', restBase: 'media', label: 'Media' }),
+    },
+    { label: 'Ask AI about this site', hint: 'Send a prompt with site context', icon: 'help-circle',
+      onClick: () => askAi(
+        'Ask AI about this site',
+        'What do you want to know or do?',
+        'e.g. Suggest three new blog post ideas for this month',
+        'Start with: curl -s http://127.0.0.1:3800/api/plugins/wordpress/site/health\n' +
+        'Then: curl -s http://127.0.0.1:3800/api/plugins/wordpress/discover'
+      ),
+    },
+  ];
+  host.innerHTML = actions.map((a, i) =>
+    '<button class="home-action" data-idx="' + i + '">' +
+      icon(a.icon) +
+      '<div><strong>' + esc(a.label) + '</strong>' +
+        '<span class="home-action-hint">' + esc(a.hint) + '</span></div>' +
+    '</button>'
+  ).join('');
+  host.querySelectorAll('.home-action').forEach(btn => {
+    btn.addEventListener('click', () => actions[parseInt(btn.dataset.idx, 10)].onClick());
+  });
+}
+
+function renderHomeBridgeBanner(b) {
+  const host = document.getElementById('homeBridge');
+  if (!host) return;
+  if (b && b.installed) {
+    host.innerHTML = '';
+    return;
+  }
+  // Show banner only if a page builder is detected (otherwise the bridge is not needed)
+  const needsBridge = (state.detectedPlugins || []).some(p =>
+    p.id === 'elementor' || p.id === 'breakdance' || p.id === 'bricks' || p.id === 'beaver' || p.id === 'divi'
+  );
+  if (!needsBridge) {
+    host.innerHTML = '';
+    return;
+  }
+  host.innerHTML =
+    '<div class="home-bridge-banner">' +
+      icon('help-circle') +
+      '<div><strong>DevOps Pilot bridge not installed.</strong> ' +
+        'Page-builder writes (Elementor, Breakdance, etc) will not persist until you install the bridge mu-plugin on this site. ' +
+        '<code>.\\scripts\\Install-WPBridge.ps1</code> downloads it locally.</div>' +
+      '<div class="spacer"></div>' +
+      '<button class="btn-mini" id="homeBridgeDownload">Download</button>' +
+    '</div>';
+  document.getElementById('homeBridgeDownload').addEventListener('click', () => {
+    window.open(API + '/bridge/mu-plugin', '_blank');
+    toast('Downloading bridge...', 'info');
+  });
+}
+
+// Restore the filter bar visibility when leaving Home
+function leaveHome() {
+  const list = document.getElementById('listContainer');
+  const filterBar = list.previousElementSibling;
+  if (filterBar && filterBar.classList.contains('filter-bar')) filterBar.style.display = '';
+}
+
+// ── Skeleton renderers ─────────────────────────────────────
+function renderSkeletonList(n) {
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    const pct = 40 + Math.floor(Math.random() * 40);
+    rows.push('<div class="skeleton-row">' +
+      '<div class="skeleton dot"></div>' +
+      '<div class="skeleton title" style="max-width:' + pct + '%"></div>' +
+      '<div class="skeleton badge"></div>' +
+      '<div class="skeleton meta"></div>' +
+      '</div>');
+  }
+  return '<div class="skeleton-list">' + rows.join('') + '</div>';
+}
+function renderSkeletonGrid(n) {
+  const cards = [];
+  for (let i = 0; i < n; i++) cards.push('<div class="skeleton skeleton-card"></div>');
+  // Wrap cards so they live inside the already .media-grid-styled list
+  return cards.join('');
 }
 
 // ── List renderers ─────────────────────────────────────────
-function renderPostList(items) {
+function renderPostLikeList(items) {
   const list = document.getElementById('listContainer');
   if (!items.length) { list.innerHTML = emptyState('No items'); return; }
   list.innerHTML = items.map(p => `
@@ -589,7 +1532,7 @@ function renderPostList(items) {
     </div>
   `).join('');
   list.querySelectorAll('.row').forEach(row => {
-    row.addEventListener('click', () => openPostDetail(parseInt(row.dataset.id, 10)));
+    row.addEventListener('click', () => openContentDetail(parseInt(row.dataset.id, 10)));
   });
 }
 
@@ -608,12 +1551,16 @@ function renderMediaGrid(items) {
       </div>`;
     }
     return `<div class="media-card file" data-id="${m.id}">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-      <div>${esc(name)}</div>
+      ${icon('file')}
+      <div class="file-label">${esc(name)}</div>
     </div>`;
   }).join('');
   list.querySelectorAll('.media-card').forEach(card => {
-    card.addEventListener('click', () => openMediaDetail(parseInt(card.dataset.id, 10)));
+    card.addEventListener('click', () => {
+      list.querySelectorAll('.media-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      openMediaDetail(parseInt(card.dataset.id, 10));
+    });
   });
 }
 
@@ -662,17 +1609,56 @@ function renderUserList(items) {
 }
 
 function emptyState(msg) {
-  return `<div class="empty">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-    <h3>${esc(msg)}</h3><p>Nothing to show here yet.</p></div>`;
+  return '<div class="empty">' + icon('help-circle') +
+    '<h3>' + esc(msg) + '</h3><p>Nothing to show here yet.</p></div>';
 }
 
 // ── Detail panel helpers ───────────────────────────────────
-function openDetail() { document.getElementById('detailPanel').style.display = 'flex'; document.getElementById('detailPanel').classList.add('open'); }
+function openDetail() {
+  document.getElementById('detailPanel').style.display = 'flex';
+  document.getElementById('detailPanel').classList.add('open');
+  document.getElementById('mainArea').classList.remove('no-detail');
+  clearPreviewPanel();
+}
 function closeDetail() {
   document.getElementById('detailPanel').style.display = 'none';
   document.getElementById('detailPanel').classList.remove('open');
+  document.getElementById('mainArea').classList.add('no-detail');
+  clearPreviewPanel();
   state.selected = null; state.editing = null;
+  if (state.rte) { try { state.rte = null; } catch (_) {} }
+}
+
+// ── Fixed preview panel (lives outside the scrollable detail-body) ──
+function clearPreviewPanel() {
+  const wrap = document.getElementById('detailPreviewWrap');
+  wrap.classList.remove('active');
+  wrap.innerHTML = '';
+}
+function renderPreviewPanel(pageUrl) {
+  const wrap = document.getElementById('detailPreviewWrap');
+  if (!pageUrl) { clearPreviewPanel(); return; }
+  wrap.innerHTML =
+    '<div class="preview-section" id="previewSection">' +
+      '<div class="preview-section-header">' +
+        icon('eye') + ' Preview' +
+        '<div class="spacer"></div>' +
+        '<button class="btn-mini" id="previewZoomOut" title="Zoom out">' + icon('zoom-out') + '</button>' +
+        '<span class="preview-zoom-label" id="previewZoomLabel">100%</span>' +
+        '<button class="btn-mini" id="previewZoomIn" title="Zoom in">' + icon('zoom-in') + '</button>' +
+        '<button class="btn-mini" id="previewReload" title="Reload">' + icon('rotate-ccw') + '</button>' +
+        '<button class="btn-mini" id="previewOpen" title="Open in new tab">Open</button>' +
+      '</div>' +
+      '<div class="preview-viewport loading" id="previewViewport">' +
+        '<iframe id="previewFrame" sandbox="allow-same-origin allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe>' +
+      '</div>' +
+    '</div>';
+  wrap.classList.add('active');
+  setupPreview(pageUrl);
+  document.getElementById('previewReload').addEventListener('click', () => setupPreview(pageUrl));
+  document.getElementById('previewOpen').addEventListener('click', () => window.open(pageUrl, '_blank'));
+  document.getElementById('previewZoomIn').addEventListener('click', () => adjustDetailPreviewZoom(0.1));
+  document.getElementById('previewZoomOut').addEventListener('click', () => adjustDetailPreviewZoom(-0.1));
 }
 document.getElementById('closeDetailBtn').addEventListener('click', closeDetail);
 
@@ -684,20 +1670,39 @@ document.getElementById('detailTabs').addEventListener('click', (e) => {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === name));
 });
 
-// ── Post / Page detail ─────────────────────────────────────
-async function openPostDetail(id) {
+// ── Content (post / page / CPT) detail ─────────────────────
+async function openContentDetail(id) {
   openDetail();
   document.getElementById('detailTitle').textContent = 'Loading...';
-  document.getElementById('detailBody').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const type = state.section === 'pages' ? 'pages' : 'posts';
-  const r = await api('/' + type + '/' + id);
-  if (r.status >= 400) { document.getElementById('detailBody').innerHTML = '<p style="color:var(--red)">' + esc((r.data && r.data.message) || 'Error') + '</p>'; return; }
+  document.getElementById('detailBody').innerHTML = renderSkeletonDetail();
+  document.getElementById('detailActions').innerHTML = '';
+  const rb = state.section.restBase;
+  const r = await api('/content/' + rb + '/' + id);
+  if (r.status >= 400) {
+    document.getElementById('detailBody').innerHTML = '<p style="color:var(--red)">' + esc((r.data && r.data.message) || 'Error') + '</p>';
+    return;
+  }
   state.selected = r.data;
   state.editing = { ...r.data };
-  renderPostDetail(r.data, type);
+  renderContentDetail(r.data);
 }
 
-function renderPostDetail(p, type) {
+function renderSkeletonDetail() {
+  return '<div style="padding:4px">' +
+    '<div class="skeleton skeleton-block" style="width:40%;height:10px;margin-bottom:6px;"></div>' +
+    '<div class="skeleton skeleton-block" style="height:30px;margin-bottom:14px;"></div>' +
+    '<div class="skeleton skeleton-block" style="width:30%;height:10px;margin-bottom:6px;"></div>' +
+    '<div class="skeleton skeleton-block" style="height:30px;margin-bottom:14px;"></div>' +
+    '<div class="skeleton skeleton-block" style="width:30%;height:10px;margin-bottom:6px;"></div>' +
+    '<div class="skeleton skeleton-block" style="height:200px;margin-bottom:14px;"></div>' +
+    '<div class="skeleton skeleton-block" style="height:220px;"></div>' +
+    '</div>';
+}
+
+function renderContentDetail(p) {
+  const section = state.section;
+  const isHierarchical = (state.discovery && state.discovery.postTypes || [])
+    .find(pt => pt.slug === section.slug)?.hierarchical;
   document.getElementById('detailTitle').textContent = stripHtml(titleOf(p)) || '(untitled)';
   const body = document.getElementById('detailBody');
   const title = (p.title && (p.title.raw || p.title.rendered)) || '';
@@ -730,23 +1735,23 @@ function renderPostDetail(p, type) {
         <textarea id="f-excerpt">${esc(excerpt)}</textarea>
       </div>
       <div class="field">
-        <label>Content (HTML)</label>
-        <textarea id="f-content" class="content-editor">${esc(content)}</textarea>
-        <div class="field-hint">HTML is rendered by WordPress. For Gutenberg blocks, use <code>&lt;!-- wp:paragraph --&gt;</code> syntax.</div>
+        <label>Content</label>
+        <div id="f-content-wrap"></div>
+        <div class="field-hint">Rich text. Toggle <strong>Code</strong> for HTML source or <strong>Fullscreen</strong> for a larger canvas.</div>
       </div>
-      ${type === 'posts' ? `
+      ${isHierarchical ? `
         <div class="field">
-          <label>Featured media ID</label>
-          <input type="number" id="f-featured" value="${p.featured_media || ''}">
-        </div>
-      ` : `
-        <div class="field">
-          <label>Parent page ID</label>
+          <label>Parent ID</label>
           <input type="number" id="f-parent" value="${p.parent || 0}">
         </div>
         <div class="field">
           <label>Menu order</label>
           <input type="number" id="f-menu-order" value="${p.menu_order || 0}">
+        </div>
+      ` : `
+        <div class="field">
+          <label>Featured media ID</label>
+          <input type="number" id="f-featured" value="${p.featured_media || ''}">
         </div>
       `}
       <div class="field">
@@ -763,7 +1768,7 @@ function renderPostDetail(p, type) {
       </div>
       <div class="field">
         <label>Meta Description</label>
-        <textarea id="seo-desc" style="min-height:60px;font-family:var(--font-ui);font-size:12px;">${esc(meta._yoast_wpseo_metadesc || meta.rank_math_description || '')}</textarea>
+        <textarea id="seo-desc" style="min-height:60px;">${esc(meta._yoast_wpseo_metadesc || meta.rank_math_description || '')}</textarea>
         <div class="field-hint">140-160 chars ideal</div>
       </div>
       <div class="field">
@@ -780,7 +1785,7 @@ function renderPostDetail(p, type) {
       </div>
       <div class="field">
         <label>Open Graph Description</label>
-        <textarea id="seo-og-desc" style="min-height:50px;font-family:var(--font-ui);font-size:12px;">${esc(meta._yoast_wpseo_opengraph_description || meta.rank_math_facebook_description || '')}</textarea>
+        <textarea id="seo-og-desc" style="min-height:50px;">${esc(meta._yoast_wpseo_opengraph_description || meta.rank_math_facebook_description || '')}</textarea>
       </div>
     </div>
 
@@ -808,41 +1813,339 @@ function renderPostDetail(p, type) {
           <option value="closed" ${p.comment_status==='closed'?'selected':''}>Closed</option>
         </select>
       </div>
+      <div class="field">
+        <label>Backups for this item</label>
+        <div id="f-backups" style="font-size:11px;color:var(--subtext0);padding:8px;background:var(--surface0);border-radius:4px;">Loading...</div>
+        <button class="btn" style="margin-top:6px;" id="f-backup-now">${icon('save')} Snapshot now</button>
+      </div>
     </div>
   `;
-  renderActions(`
-    <button class="btn primary" id="saveBtn">Save</button>
-    <button class="btn" id="viewBtn">View</button>
-    <div class="spacer" style="flex:1"></div>
-    <button class="btn danger" id="trashBtn">Trash</button>
-  `);
-  document.getElementById('saveBtn').addEventListener('click', () => savePost(type));
+
+  // Mount Quill rich text editor
+  state.rte = mountRichEditor(document.getElementById('f-content-wrap'), content);
+
+  // Build the action bar -- primary + AI + builder + trash
+  const itemBuilder = detectBuilderForItem(p);
+  const showElementor = itemBuilder === 'elementor' || hasSitePlugin('elementor');
+  const showBreakdance = itemBuilder === 'breakdance' || hasSitePlugin('breakdance');
+  const isPageLike = section.kind === 'postType' && (section.slug === 'page' || section.slug === 'post' || isHierarchical);
+
+  const aiInfo = summarizeContentForAi(p, section);
+  const actionsHtml =
+    '<button class="btn primary" id="saveBtn">' + icon('save') + ' Save</button>' +
+    '<button class="btn" id="viewBtn">View</button>' +
+    '<button class="btn ai" id="aiEditBtn" title="Ask AI to edit this">Ask AI</button>' +
+    (isPageLike && showElementor ? '<button class="btn builder" id="openElementorBtn" title="Open in Elementor">Elementor</button>' : '') +
+    (isPageLike && showBreakdance ? '<button class="btn builder" id="openBreakdanceBtn" title="Open in Breakdance">Breakdance</button>' : '') +
+    '<div class="spacer" style="flex:1"></div>' +
+    '<button class="btn danger" id="trashBtn">Trash</button>';
+  renderActions(actionsHtml);
+
+  document.getElementById('saveBtn').addEventListener('click', () => saveContent());
   document.getElementById('viewBtn').addEventListener('click', () => window.open(p.link, '_blank'));
-  document.getElementById('trashBtn').addEventListener('click', () => trashPost(type, p.id));
+  document.getElementById('trashBtn').addEventListener('click', () => trashContent(p.id));
+
+  document.getElementById('aiEditBtn').addEventListener('click', async () => {
+    const prompt = await askInput({
+      title: 'Ask AI',
+      label: 'What should the AI do with this ' + (section.label || 'item') + '?',
+      placeholder: 'e.g. Rewrite the intro for Montreal, keep the layout',
+      multiline: true,
+      confirmText: 'Send to AI',
+    });
+    if (!prompt) return;
+    const info = summarizeContentForAi(p, section);
+    const fullPrompt = buildAiPrompt('edit', info) +
+      '\n\nUser request: ' + prompt;
+    sendToAi(fullPrompt);
+    toast('Sent to AI terminal', 'ok');
+  });
+
+  const elBtn = document.getElementById('openElementorBtn');
+  if (elBtn) elBtn.addEventListener('click', () => {
+    const siteUrl = (state.cfg && state.cfg.siteUrl) || '';
+    window.open(builderEditUrl('elementor', siteUrl, p.id), '_blank');
+  });
+  const bdBtn = document.getElementById('openBreakdanceBtn');
+  if (bdBtn) bdBtn.addEventListener('click', () => {
+    const siteUrl = (state.cfg && state.cfg.siteUrl) || '';
+    window.open(builderEditUrl('breakdance', siteUrl, p.id), '_blank');
+  });
+
+  // Load backups for this item
+  loadBackupsFor(section.restBase, p.id);
+  const backupBtn = document.getElementById('f-backup-now');
+  if (backupBtn) backupBtn.addEventListener('click', async () => {
+    const r = await api('/backup', { method: 'POST', body: { restBase: section.restBase, id: p.id, reason: 'manual' } });
+    if (r.status >= 400) { toast('Backup failed', 'err'); return; }
+    toast('Snapshot saved', 'ok');
+    loadBackupsFor(section.restBase, p.id);
+  });
+
+  // Mount fixed preview panel at the bottom of the detail column
+  renderPreviewPanel(p.link || '');
 }
 
-function renderActions(html) {
-  document.getElementById('detailActions').innerHTML = html;
+async function loadBackupsFor(restBase, id) {
+  const el = document.getElementById('f-backups');
+  if (!el) return;
+  const r = await api('/backups/' + restBase + '/' + id);
+  if (r.status >= 400 || !r.data || !r.data.items || !r.data.items.length) {
+    el.innerHTML = '<em>No snapshots yet. Backups are taken automatically before any edit.</em>';
+    return;
+  }
+  const items = r.data.items.slice(0, 12);
+  el.innerHTML = items.map(b => {
+    const ts = new Date(b.timestamp).toLocaleString();
+    return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--surface1);">' +
+      '<span style="flex:1;color:var(--text)">' + esc(ts) + ' <span style="color:var(--subtext0);font-size:10px">(' + esc(b.reason || '') + ')</span></span>' +
+      '<button class="btn-mini" data-backup="' + esc(b.backupId) + '">Restore</button>' +
+      '</div>';
+  }).join('');
+  el.querySelectorAll('[data-backup]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const ok = await askConfirm({
+        title: 'Restore snapshot',
+        message: 'Restore this snapshot? A safety backup of the current state will be taken first.',
+        confirmText: 'Restore',
+      });
+      if (!ok) return;
+      const bid = btn.dataset.backup;
+      const r = await api('/restore/' + bid, { method: 'POST' });
+      if (r.status >= 400 || !r.data || !r.data.ok) { toast('Restore failed', 'err'); return; }
+      toast('Restored', 'ok');
+      openContentDetail(id);
+    });
+  });
 }
 
-async function savePost(type) {
+// ── Preview iframe ─────────────────────────────────────────
+function setupPreview(pageUrl) {
+  const vp = document.getElementById('previewViewport');
+  const frame = document.getElementById('previewFrame');
+  if (!vp || !frame) return;
+  vp.classList.add('loading');
+  const src = API + '/preview?url=' + encodeURIComponent(pageUrl) + '&t=' + Date.now();
+  frame.onload = () => {
+    vp.classList.remove('loading');
+    scalePreview();
+  };
+  frame.onerror = () => {
+    vp.classList.remove('loading');
+    vp.innerHTML = '<div class="preview-blocked">' + icon('eye') + '<div>Preview could not be loaded.</div></div>';
+  };
+  frame.src = src;
+}
+
+// Zoom controls the simulated device width. 1.0 = desktop baseline (1280px).
+// Higher zoom = narrower device width (mobile feel). Lower zoom = wider (desktop overview).
+// The iframe is always scaled to fit the container width, so the page never overflows horizontally.
+let detailPreviewZoom = 1;
+let homePreviewZoom = 1;
+const PREVIEW_ZOOM_MIN = 0.4;
+const PREVIEW_ZOOM_MAX = 3;
+const PREVIEW_BASE_WIDTH = 1280;
+
+function clampZoom(z) {
+  return Math.max(PREVIEW_ZOOM_MIN, Math.min(PREVIEW_ZOOM_MAX, Math.round(z * 100) / 100));
+}
+
+function applyPreviewScale(vp, frame, zoom) {
+  if (!vp || !frame) return;
+  const vpWidth = vp.clientWidth;
+  const vpHeight = vp.clientHeight;
+  if (vpWidth <= 0 || vpHeight <= 0) return;
+  // Derive the simulated device width from the zoom multiplier so the
+  // page actually reflows responsively instead of just getting bigger.
+  const frameWidth = Math.max(280, Math.round(PREVIEW_BASE_WIDTH / zoom));
+  // Always fit the iframe to the container width so there is no horizontal overflow.
+  const scale = vpWidth / frameWidth;
+  // Iframe logical viewport height matches the container so fixed-positioned
+  // elements (nav bars, back-to-top buttons) anchor to the visible area.
+  const frameHeight = Math.ceil(vpHeight / scale);
+  frame.style.width = frameWidth + 'px';
+  frame.style.height = frameHeight + 'px';
+  frame.style.transform = 'scale(' + scale + ')';
+}
+
+function scalePreview() {
+  const vp = document.getElementById('previewViewport');
+  const frame = document.getElementById('previewFrame');
+  applyPreviewScale(vp, frame, detailPreviewZoom);
+  const label = document.getElementById('previewZoomLabel');
+  if (label) label.textContent = Math.round(detailPreviewZoom * 100) + '%';
+}
+
+function adjustDetailPreviewZoom(delta) {
+  detailPreviewZoom = clampZoom(detailPreviewZoom + delta);
+  scalePreview();
+}
+
+function scaleHomePreview() {
+  const vp = document.getElementById('homePreviewViewport');
+  const frame = document.getElementById('homePreviewFrame');
+  applyPreviewScale(vp, frame, homePreviewZoom);
+  const label = document.getElementById('homePreviewZoomLabel');
+  if (label) label.textContent = Math.round(homePreviewZoom * 100) + '%';
+}
+
+function adjustHomePreviewZoom(delta) {
+  homePreviewZoom = clampZoom(homePreviewZoom + delta);
+  scaleHomePreview();
+}
+
+window.addEventListener('resize', () => {
+  if (document.getElementById('previewFrame')) scalePreview();
+  if (document.getElementById('homePreviewFrame')) scaleHomePreview();
+});
+
+// ── Rich text editor (Quill 2 + fullscreen + code view) ───
+function mountRichEditor(mountEl, initialHtml) {
+  mountEl.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'rte-wrap';
+  // Extra toolbar with Code / Fullscreen
+  const extra = document.createElement('div');
+  extra.className = 'rte-toolbar-extra';
+  extra.innerHTML =
+    '<button type="button" data-act="code" title="Toggle HTML source">' + icon('code') + ' Code</button>' +
+    '<button type="button" data-act="fullscreen" title="Fullscreen">' + icon('maximize') + ' Fullscreen</button>';
+  wrap.appendChild(extra);
+  // Quill container
+  const editorEl = document.createElement('div');
+  wrap.appendChild(editorEl);
+  // Code view textarea (hidden until toggled)
+  const codeEl = document.createElement('textarea');
+  codeEl.className = 'rte-code-view';
+  codeEl.spellcheck = false;
+  wrap.appendChild(codeEl);
+  mountEl.appendChild(wrap);
+
+  const toolbarOptions = [
+    [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ 'color': [] }, { 'background': [] }],
+    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+    [{ 'align': [] }],
+    ['blockquote', 'code-block'],
+    ['link', 'image'],
+    ['clean']
+  ];
+  const quill = new Quill(editorEl, {
+    theme: 'snow',
+    modules: { toolbar: toolbarOptions },
+    placeholder: 'Write content...',
+  });
+  try { quill.clipboard.dangerouslyPasteHTML(initialHtml || ''); } catch (_) {}
+
+  // Code toggle
+  extra.querySelector('[data-act="code"]').addEventListener('click', (e) => {
+    e.preventDefault();
+    const btn = e.currentTarget;
+    if (wrap.classList.contains('code-view')) {
+      // Leave code view -- push HTML back into Quill
+      try { quill.clipboard.dangerouslyPasteHTML(codeEl.value); } catch (_) {}
+      wrap.classList.remove('code-view');
+      btn.classList.remove('active');
+    } else {
+      // Enter code view -- format HTML and show
+      const html = quill.root.innerHTML;
+      codeEl.value = formatHtml(html);
+      wrap.classList.add('code-view');
+      btn.classList.add('active');
+      codeEl.focus();
+    }
+  });
+
+  // Fullscreen toggle
+  extra.querySelector('[data-act="fullscreen"]').addEventListener('click', (e) => {
+    e.preventDefault();
+    const btn = e.currentTarget;
+    wrap.classList.toggle('fullscreen');
+    btn.classList.toggle('active');
+  });
+
+  return {
+    getHtml() {
+      if (wrap.classList.contains('code-view')) return codeEl.value;
+      return quill.root.innerHTML;
+    },
+    setHtml(html) {
+      try { quill.clipboard.dangerouslyPasteHTML(html || ''); } catch (_) {}
+      codeEl.value = formatHtml(html || '');
+    },
+    quill,
+    wrap,
+  };
+}
+
+// Minimal HTML pretty printer (no js-beautify; good enough for humans)
+function formatHtml(html) {
+  if (!html) return '';
+  const voids = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
+  // Tokenize
+  const tokens = [];
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] === '<') {
+      const end = html.indexOf('>', i);
+      if (end === -1) { tokens.push({ type: 'text', value: html.slice(i) }); break; }
+      tokens.push({ type: 'tag', value: html.slice(i, end + 1) });
+      i = end + 1;
+    } else {
+      const next = html.indexOf('<', i);
+      const end = next === -1 ? html.length : next;
+      const text = html.slice(i, end);
+      if (text.trim()) tokens.push({ type: 'text', value: text.trim() });
+      i = end;
+    }
+  }
+  let indent = 0;
+  const out = [];
+  const pad = () => '  '.repeat(Math.max(0, indent));
+  for (const tok of tokens) {
+    if (tok.type === 'text') {
+      out.push(pad() + tok.value);
+      continue;
+    }
+    const t = tok.value;
+    if (/^<!/.test(t)) { out.push(pad() + t); continue; }
+    if (/^<\//.test(t)) {
+      indent = Math.max(0, indent - 1);
+      out.push(pad() + t);
+      continue;
+    }
+    const tagName = (t.match(/^<\s*([a-zA-Z0-9]+)/) || [])[1] || '';
+    const selfClose = /\/>$/.test(t) || voids.test(tagName);
+    out.push(pad() + t);
+    if (!selfClose) indent++;
+  }
+  return out.join('\n');
+}
+
+// ── Save / delete ──────────────────────────────────────────
+async function saveContent() {
+  const section = state.section;
   const id = state.selected.id;
+  const rb = section.restBase;
+  const isHierarchical = (state.discovery && state.discovery.postTypes || [])
+    .find(pt => pt.slug === section.slug)?.hierarchical;
   const data = {
     title: document.getElementById('f-title').value,
     slug: document.getElementById('f-slug').value,
     status: document.getElementById('f-status').value,
     excerpt: document.getElementById('f-excerpt').value,
-    content: document.getElementById('f-content').value,
+    content: state.rte ? state.rte.getHtml() : '',
     comment_status: document.getElementById('f-comment-status').value,
   };
-  if (type === 'posts') {
-    const f = document.getElementById('f-featured').value;
-    if (f) data.featured_media = parseInt(f, 10);
-  } else {
+  if (isHierarchical) {
     const parent = document.getElementById('f-parent').value;
     const order = document.getElementById('f-menu-order').value;
     if (parent) data.parent = parseInt(parent, 10);
     if (order) data.menu_order = parseInt(order, 10);
+  } else {
+    const f = document.getElementById('f-featured').value;
+    if (f) data.featured_media = parseInt(f, 10);
   }
   // SEO meta
   const seoMeta = {};
@@ -860,29 +2163,43 @@ async function savePost(type) {
   if (seoOgDesc) { seoMeta._yoast_wpseo_opengraph_description = seoOgDesc; seoMeta.rank_math_facebook_description = seoOgDesc; }
   if (Object.keys(seoMeta).length) data.meta = seoMeta;
 
-  const r = await api('/' + type + '/' + id, { method: 'PUT', body: data });
+  const r = await api('/content/' + rb + '/' + id, { method: 'PUT', body: data });
   if (r.status >= 400) {
     toast((r.data && r.data.message) || 'Save failed', 'err');
     return;
   }
-  toast('Saved', 'ok');
-  loadSection(state.section);
+  toast('Saved (auto-backup taken)', 'ok');
+  loadSection();
+  // Reload preview to show fresh content
+  if (r.data && r.data.link) {
+    // Re-setup the iframe inside the fixed preview panel (if present)
+    if (document.getElementById('previewFrame')) setupPreview(r.data.link);
+    else renderPreviewPanel(r.data.link);
+  }
 }
 
-async function trashPost(type, id) {
-  if (!confirm('Move to trash?')) return;
-  const r = await api('/' + type + '/' + id, { method: 'DELETE' });
+async function trashContent(id) {
+  const ok = await askConfirm({
+    title: 'Move to trash',
+    message: 'Move this item to trash? A backup will be taken first, so you can restore it later.',
+    confirmText: 'Move to trash',
+    danger: true,
+  });
+  if (!ok) return;
+  const rb = state.section.restBase;
+  const r = await api('/content/' + rb + '/' + id, { method: 'DELETE' });
   if (r.status >= 400) { toast('Delete failed', 'err'); return; }
   toast('Trashed', 'ok');
   closeDetail();
-  loadSection(state.section);
+  loadSection();
 }
 
 // ── Media detail ───────────────────────────────────────────
 async function openMediaDetail(id) {
   openDetail();
   document.getElementById('detailTitle').textContent = 'Loading...';
-  document.getElementById('detailBody').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  document.getElementById('detailBody').innerHTML = renderSkeletonDetail();
+  document.getElementById('detailActions').innerHTML = '';
   const r = await api('/media/' + id);
   if (r.status >= 400) { document.getElementById('detailBody').innerHTML = '<p style="color:var(--red)">Error</p>'; return; }
   state.selected = r.data;
@@ -900,7 +2217,7 @@ function renderMediaDetail(m) {
   body.innerHTML = `
     <div class="tab-panel active" data-panel="content">
       ${isImage ? `<div style="margin-bottom:12px;text-align:center;background:var(--surface0);padding:10px;border-radius:var(--radius);">
-        <img src="${esc(m.source_url)}" style="max-width:100%;max-height:200px;">
+        <img src="${esc(m.source_url)}" style="max-width:100%;max-height:220px;">
       </div>` : ''}
       <div class="field">
         <label>Title</label>
@@ -909,15 +2226,15 @@ function renderMediaDetail(m) {
       <div class="field">
         <label>Alt text</label>
         <input type="text" id="m-alt" value="${esc(m.alt_text || '')}">
-        <div class="field-hint">Describe the image for screen readers &amp; SEO</div>
+        <div class="field-hint">Describe the image for screen readers and SEO</div>
       </div>
       <div class="field">
         <label>Caption</label>
-        <textarea id="m-caption" style="min-height:50px;font-family:var(--font-ui);font-size:12px;">${esc(caption)}</textarea>
+        <div id="m-caption-wrap"></div>
       </div>
       <div class="field">
         <label>Description</label>
-        <textarea id="m-description" style="min-height:50px;font-family:var(--font-ui);font-size:12px;">${esc(description)}</textarea>
+        <div id="m-description-wrap"></div>
       </div>
       <div class="field">
         <label>Source URL</label>
@@ -935,18 +2252,38 @@ function renderMediaDetail(m) {
       ` : ''}
     </div>
   `;
+
+  // Mount rich editors for caption and description (small)
+  const capRte = mountRichEditor(document.getElementById('m-caption-wrap'), caption);
+  const descRte = mountRichEditor(document.getElementById('m-description-wrap'), description);
+
+  // Preview panel is not meaningful for media (the image is already shown inline)
+  clearPreviewPanel();
+
   renderActions(`
-    <button class="btn primary" id="saveBtn">Save</button>
+    <button class="btn primary" id="saveBtn">${icon('save')} Save</button>
     <button class="btn" id="copyBtn">Copy URL</button>
+    <button class="btn ai" id="aiBtn" title="Describe this image with AI">AI alt text</button>
     <div class="spacer" style="flex:1"></div>
     <button class="btn danger" id="delBtn">Delete</button>
   `);
+  document.getElementById('aiBtn').addEventListener('click', () => {
+    const prompt =
+      'I am working with a WordPress media item via DevOps Pilot WordPress plugin.\n' +
+      'Media ID: ' + m.id + ' (MIME: ' + (m.mime_type || '') + ')\n' +
+      'Source URL: ' + (m.source_url || '') + '\n' +
+      'Current alt text: "' + (m.alt_text || '') + '"\n\n' +
+      'Please look at the image and suggest a better alt text (under 120 chars), a caption, and a description. ' +
+      'Update the item via PUT http://127.0.0.1:3800/api/plugins/wordpress/media/' + m.id + ' once I approve the suggestions.';
+    sendToAi(prompt);
+    toast('Sent to AI terminal', 'ok');
+  });
   document.getElementById('saveBtn').addEventListener('click', async () => {
     const data = {
       title: document.getElementById('m-title').value,
       alt_text: document.getElementById('m-alt').value,
-      caption: document.getElementById('m-caption').value,
-      description: document.getElementById('m-description').value,
+      caption: capRte.getHtml(),
+      description: descRte.getHtml(),
     };
     const r = await api('/media/' + m.id, { method: 'PUT', body: data });
     if (r.status >= 400) { toast('Save failed', 'err'); return; }
@@ -957,18 +2294,26 @@ function renderMediaDetail(m) {
     toast('URL copied', 'ok');
   });
   document.getElementById('delBtn').addEventListener('click', async () => {
-    if (!confirm('Permanently delete this media?')) return;
+    const ok = await askConfirm({
+      title: 'Delete media',
+      message: 'Permanently delete this media? This cannot be undone.',
+      confirmText: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
     const r = await api('/media/' + m.id, { method: 'DELETE' });
     if (r.status >= 400) { toast('Delete failed', 'err'); return; }
     toast('Deleted', 'ok');
     closeDetail();
-    loadSection('media');
+    loadSection();
   });
 }
 
 // ── Comment detail ─────────────────────────────────────────
 async function openCommentDetail(id) {
   openDetail();
+  document.getElementById('detailTitle').textContent = 'Loading...';
+  document.getElementById('detailBody').innerHTML = renderSkeletonDetail();
   const r = await api('/comments/' + id);
   if (r.status >= 400) { return; }
   state.selected = r.data;
@@ -990,7 +2335,7 @@ async function openCommentDetail(id) {
       </div>
       <div class="field">
         <label>Content</label>
-        <textarea readonly style="min-height:100px;font-family:var(--font-ui);font-size:12px;">${esc(stripHtml(c.content && c.content.rendered || ''))}</textarea>
+        <textarea readonly style="min-height:100px;">${esc(stripHtml(c.content && c.content.rendered || ''))}</textarea>
       </div>
       <div class="field">
         <label>Date</label>
@@ -1006,12 +2351,19 @@ async function openCommentDetail(id) {
     <button class="btn danger" id="trashBtn">Trash</button>
   `);
   const act = async (action) => {
-    if (!confirm(action.charAt(0).toUpperCase() + action.slice(1) + ' this comment?')) return;
+    const label = action.charAt(0).toUpperCase() + action.slice(1);
+    const ok = await askConfirm({
+      title: label + ' comment',
+      message: label + ' this comment?',
+      confirmText: label,
+      danger: action === 'spam' || action === 'trash',
+    });
+    if (!ok) return;
     const r = await api('/comments/' + c.id + '/' + action, { method: 'POST' });
     if (r.status >= 400) { toast('Failed', 'err'); return; }
     toast(action, 'ok');
     closeDetail();
-    loadSection('comments');
+    loadSection();
   };
   document.getElementById('approveBtn').addEventListener('click', () => act('approve'));
   document.getElementById('holdBtn').addEventListener('click', () => act('hold'));
@@ -1019,26 +2371,30 @@ async function openCommentDetail(id) {
   document.getElementById('trashBtn').addEventListener('click', () => act('trash'));
 }
 
-// ── Category / Tag detail ──────────────────────────────────
+// ── Taxonomy term detail ───────────────────────────────────
 async function openTermDetail(id) {
   openDetail();
-  const type = state.section; // categories or tags
-  const r = await api('/' + type + '/' + id);
+  document.getElementById('detailTitle').textContent = 'Loading...';
+  document.getElementById('detailBody').innerHTML = renderSkeletonDetail();
+  const rb = state.section.restBase;
+  const r = await api('/content/' + rb + '/' + id);
   if (r.status >= 400) return;
   state.selected = r.data;
   const t = r.data;
+  const isCats = state.section.slug === 'category';
   document.getElementById('detailTitle').textContent = t.name;
   document.getElementById('detailBody').innerHTML = `
     <div class="tab-panel active" data-panel="content">
       <div class="field"><label>Name</label><input type="text" id="t-name" value="${esc(t.name)}"></div>
       <div class="field"><label>Slug</label><input type="text" id="t-slug" value="${esc(t.slug)}"></div>
-      <div class="field"><label>Description</label><textarea id="t-desc" style="min-height:60px;font-family:var(--font-ui);font-size:12px;">${esc(t.description || '')}</textarea></div>
-      ${type === 'categories' ? `<div class="field"><label>Parent ID</label><input type="number" id="t-parent" value="${t.parent || 0}"></div>` : ''}
+      <div class="field"><label>Description</label><div id="t-desc-wrap"></div></div>
+      ${isCats ? `<div class="field"><label>Parent ID</label><input type="number" id="t-parent" value="${t.parent || 0}"></div>` : ''}
       <div class="field"><label>Post count</label><input type="text" readonly value="${t.count || 0}"></div>
     </div>
   `;
+  const descRte = mountRichEditor(document.getElementById('t-desc-wrap'), t.description || '');
   renderActions(`
-    <button class="btn primary" id="saveBtn">Save</button>
+    <button class="btn primary" id="saveBtn">${icon('save')} Save</button>
     <div class="spacer" style="flex:1"></div>
     <button class="btn danger" id="delBtn">Delete</button>
   `);
@@ -1046,83 +2402,71 @@ async function openTermDetail(id) {
     const data = {
       name: document.getElementById('t-name').value,
       slug: document.getElementById('t-slug').value,
-      description: document.getElementById('t-desc').value,
+      description: descRte.getHtml(),
     };
-    if (type === 'categories') data.parent = parseInt(document.getElementById('t-parent').value, 10) || 0;
-    const r = await api('/' + type + '/' + t.id, { method: 'PUT', body: data });
+    if (isCats) data.parent = parseInt(document.getElementById('t-parent').value, 10) || 0;
+    const r = await api('/content/' + rb + '/' + t.id, { method: 'PUT', body: data });
     if (r.status >= 400) { toast('Save failed', 'err'); return; }
     toast('Saved', 'ok');
-    loadSection(type);
+    loadSection();
   });
   document.getElementById('delBtn').addEventListener('click', async () => {
-    if (!confirm('Delete "' + t.name + '"?')) return;
-    const r = await api('/' + type + '/' + t.id, { method: 'DELETE' });
+    const ok = await askConfirm({
+      title: 'Delete term',
+      message: 'Delete "' + t.name + '"? This cannot be undone.',
+      confirmText: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
+    const r = await api('/content/' + rb + '/' + t.id, { method: 'DELETE' });
     if (r.status >= 400) { toast('Delete failed', 'err'); return; }
     toast('Deleted', 'ok');
     closeDetail();
-    loadSection(type);
+    loadSection();
   });
 }
 
-// ── New button ─────────────────────────────────────────────
-document.getElementById('newBtn').addEventListener('click', async () => {
-  if (!state.configured) { openConfig(); return; }
-  const section = state.section;
-  if (section === 'posts' || section === 'pages') {
-    const title = prompt('Title for new ' + (section === 'pages' ? 'page' : 'post') + ':');
-    if (!title) return;
-    const r = await api('/' + section, {
-      method: 'POST',
-      body: { title, content: '<p>Start writing...</p>', status: 'draft' },
-    });
-    if (r.status >= 400) { toast('Failed', 'err'); return; }
-    toast('Draft created', 'ok');
-    loadSection(section);
-    openPostDetail(r.data.id);
-  } else if (section === 'categories' || section === 'tags') {
-    const name = prompt('Name:');
-    if (!name) return;
-    const r = await api('/' + section, { method: 'POST', body: { name } });
-    if (r.status >= 400) { toast('Failed', 'err'); return; }
-    toast('Created', 'ok');
-    loadSection(section);
-  } else if (section === 'media') {
-    const filePath = prompt('Local file path to upload:');
-    if (!filePath) return;
-    const r = await api('/media/upload', { method: 'POST', body: { filePath } });
-    if (r.status >= 400) { toast('Upload failed: ' + ((r.data && r.data.error) || ''), 'err'); return; }
-    toast('Uploaded', 'ok');
-    loadSection('media');
-  } else {
-    toast('Not creatable from here', 'err');
-  }
-});
+function renderActions(html) {
+  document.getElementById('detailActions').innerHTML = html;
+}
 
-// ── Search & filters ───────────────────────────────────────
+// ── Search and filters ─────────────────────────────────────
 let searchTimer;
 document.getElementById('searchInput').addEventListener('input', (e) => {
   clearTimeout(searchTimer);
   state.search = e.target.value;
-  searchTimer = setTimeout(() => loadSection(state.section), 300);
+  searchTimer = setTimeout(() => loadSection(), 300);
 });
 document.getElementById('statusFilter').addEventListener('change', (e) => {
   state.status = e.target.value;
-  loadSection(state.section);
+  loadSection();
 });
 
 // ── Refresh ────────────────────────────────────────────────
 document.getElementById('refreshBtn').addEventListener('click', async () => {
   await checkConnection();
-  loadSection(state.section);
-  loadCounts();
+  if (state.configured) {
+    await loadDiscovery();
+    if (state.section) loadSection();
+  }
+});
+
+// ── Listen for config changes from settings panel ─────────
+window.addEventListener('message', (event) => {
+  const msg = event.data;
+  if (!msg || !msg.__devopsPilot) return;
+  if (msg.type === 'configChanged') {
+    checkConnection().then(ok => {
+      if (ok) loadDiscovery().then(() => { if (state.section) loadSection(); });
+    });
+  }
 });
 
 // ── Init ───────────────────────────────────────────────────
 (async () => {
   const ok = await checkConnection();
   if (ok) {
-    loadSection('posts');
-    loadCounts();
+    await loadDiscovery();
   }
 })();
 </script>
