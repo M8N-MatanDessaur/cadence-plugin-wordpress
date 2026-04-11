@@ -279,18 +279,15 @@
   .preview-viewport {
     position: relative;
     width: 100%;
-    height: 260px;
     background: #fff;
     overflow: auto;
   }
   .preview-viewport iframe {
     position: absolute;
     top: 0; left: 0;
-    width: 1280px;
-    height: 800px;
+    width: 100%;
+    height: 100%;
     border: none;
-    transform-origin: 0 0;
-    /* scale set inline via JS based on container width */
   }
   .preview-zoom-label {
     min-width: 34px; text-align: center;
@@ -488,17 +485,15 @@
   .home-preview-header .btn-mini:hover { border-color: var(--accent); color: var(--text); }
   .home-preview-viewport {
     position: relative;
-    flex: 1; min-height: 420px;
+    width: 100%;
     background: #fff; overflow: auto;
   }
   .home-preview-frame {
     position: absolute;
     top: 0; left: 0;
-    width: 1280px;
-    height: 800px;
+    width: 100%;
+    height: 100%;
     border: none;
-    transform-origin: 0 0;
-    /* scale set inline via JS based on container width */
   }
   .home-preview-viewport.loading::before {
     content: 'Loading preview...';
@@ -1953,19 +1948,25 @@ function clampZoom(z) {
 function applyPreviewScale(vp, frame, zoom) {
   if (!vp || !frame) return;
   const vpWidth = vp.clientWidth;
+  if (vpWidth <= 0) return;
+  // Enforce 16:9 aspect ratio
+  vp.style.height = Math.round(vpWidth * 9 / 16) + 'px';
   const vpHeight = vp.clientHeight;
-  if (vpWidth <= 0 || vpHeight <= 0) return;
-  // Derive the simulated device width from the zoom multiplier so the
-  // page actually reflows responsively instead of just getting bigger.
-  const frameWidth = Math.max(280, Math.round(PREVIEW_BASE_WIDTH / zoom));
-  // Always fit the iframe to the container width so there is no horizontal overflow.
-  const scale = vpWidth / frameWidth;
-  // Iframe logical viewport height matches the container so fixed-positioned
-  // elements (nav bars, back-to-top buttons) anchor to the visible area.
-  const frameHeight = Math.ceil(vpHeight / scale);
-  frame.style.width = frameWidth + 'px';
-  frame.style.height = frameHeight + 'px';
-  frame.style.transform = 'scale(' + scale + ')';
+  if (vpHeight <= 0) return;
+  if (zoom === 1) {
+    // At 1x, fill the container naturally
+    frame.style.width = '100%';
+    frame.style.height = '100%';
+    frame.style.transform = 'none';
+  } else {
+    const frameWidth = Math.max(280, Math.round(PREVIEW_BASE_WIDTH / zoom));
+    const scale = vpWidth / frameWidth;
+    const frameHeight = Math.ceil(vpHeight / scale);
+    frame.style.width = frameWidth + 'px';
+    frame.style.height = frameHeight + 'px';
+    frame.style.transform = 'scale(' + scale + ')';
+    frame.style.transformOrigin = '0 0';
+  }
 }
 
 function scalePreview() {
