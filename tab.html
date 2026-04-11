@@ -627,6 +627,21 @@
   .skeleton-block { width: 100%; height: 14px; margin-bottom: 8px; }
   .skeleton-block.sm { height: 10px; width: 60%; }
 
+  /* Middle-panel circular loader */
+  .middle-loader {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 40px; min-height: 320px;
+  }
+  .middle-loader .loader-stack { display: flex; flex-direction: column; align-items: center; }
+  .loader-ring {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 3px solid var(--surface0);
+    border-top-color: var(--accent);
+    animation: loader-spin 0.8s linear infinite;
+  }
+  .loader-label { margin-top: 14px; font-size: 12px; color: var(--subtext0); }
+  @keyframes loader-spin { to { transform: rotate(360deg); } }
+
   /* ── Responsive ──────────────────────────────────────────────── */
   @media (max-width: 900px) {
     .preview-viewport { height: 200px; }
@@ -1077,6 +1092,16 @@ async function loadDiscovery() {
   const sb = document.getElementById('sidebar');
   sb.innerHTML = '<div class="nav-group-label">Loading...</div>' +
     Array.from({ length: 6 }).map(() => '<div class="nav-item"><div class="skeleton" style="height:12px;width:100%;"></div></div>').join('');
+
+  // Circular loader in the middle panel while discovering content
+  const list = document.getElementById('listContainer');
+  if (list) {
+    list.className = 'list';
+    list.innerHTML = '<div class="middle-loader"><div class="loader-stack">'
+      + '<div class="loader-ring"></div>'
+      + '<div class="loader-label">Loading site...</div>'
+      + '</div></div>';
+  }
 
   const r = await api('/discover');
   if (r.status >= 400 || !r.data) {
