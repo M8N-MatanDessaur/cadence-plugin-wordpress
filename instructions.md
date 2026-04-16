@@ -120,7 +120,7 @@ You **must ask for explicit confirmation** before any of these actions:
 You **do not** need to ask for:
 - Reading anything (summary, lists, details, search)
 - Creating drafts (status `draft`) that the user can review before publishing
-- Saving notes about WordPress content into DevOps Pilot notes
+- Saving notes about WordPress content into Symphonee notes
 
 ### Configuration (Multi-Site)
 
@@ -432,7 +432,7 @@ When adding images to a post:
 | `Get-WPElementorPage.ps1` | Fetch _elementor_data for a page and summarise the widget tree (or -Full for raw JSON) |
 | `Copy-WPElementorPage.ps1` | Clone an Elementor page or template into a new draft -- use this to build pages from references |
 | `Get-WPBreakdanceTemplates.ps1` | List all Breakdance templates, headers, footers, popups, and blocks |
-| `Install-WPBridge.ps1` | Download the devops-pilot-bridge.php mu-plugin (needed for page-builder REST writes) |
+| `Install-WPBridge.ps1` | Download the symphonee-bridge.php mu-plugin (needed for page-builder REST writes) |
 | `Test-WPBridge.ps1` | Check whether the bridge mu-plugin is installed on the target site |
 
 From bash, run PowerShell scripts with:
@@ -515,7 +515,7 @@ curl -s -X POST http://127.0.0.1:3800/api/plugins/wordpress/elementor/clone \
 **Writing `_elementor_data`:** WordPress does NOT expose `_elementor_data` via REST by default. If `PUT /elementor/page/:id` returns 200 but the editor does not reflect the change, the site needs a tiny must-use plugin that registers the meta with `show_in_rest => true`:
 
 ```php
-// wp-content/mu-plugins/devops-pilot-elementor-bridge.php
+// wp-content/mu-plugins/symphonee-elementor-bridge.php
 add_action('init', function () {
   $types = ['post', 'page'];
   $meta_keys = ['_elementor_data', '_elementor_edit_mode', '_elementor_version', '_elementor_template_type'];
@@ -591,12 +591,12 @@ Returns: site name/url, counts (posts, pages, media, drafts, pending comments), 
 
 ### The Bridge Mu-Plugin
 
-The DevOps Pilot plugin ships a companion must-use plugin at `wp-mu-plugin/devops-pilot-bridge.php`. It is the fix for the "REST returns 200 but nothing updated" problem on page-builder sites.
+The Symphonee plugin ships a companion must-use plugin at `wp-mu-plugin/symphonee-bridge.php`. It is the fix for the "REST returns 200 but nothing updated" problem on page-builder sites.
 
 **What it does:**
 - Registers page-builder meta keys (`_elementor_data`, `_breakdance_data`, `bricks_page_content_2`, `_fl_builder_data`, `_et_pb_use_builder`, plus all their siblings) on every public post type with `show_in_rest => true` and an `edit_post` auth callback. This is the ONLY way to read/write these fields over REST.
-- Adds `/wp-json/devops-pilot/v1/builder-info/{id}` which returns which builder a post is using, its version, data length, and an MD5 hash. Use this as a fast per-item detection that does not require pulling the full post.
-- Adds `/wp-json/devops-pilot/v1/elementor/clear-cache/{id}` which deletes `_elementor_css` and calls Elementor's file cache manager. You MUST call this after writing `_elementor_data` or the front end will keep rendering the old layout.
+- Adds `/wp-json/symphonee/v1/builder-info/{id}` which returns which builder a post is using, its version, data length, and an MD5 hash. Use this as a fast per-item detection that does not require pulling the full post.
+- Adds `/wp-json/symphonee/v1/elementor/clear-cache/{id}` which deletes `_elementor_css` and calls Elementor's file cache manager. You MUST call this after writing `_elementor_data` or the front end will keep rendering the old layout.
 
 **Detecting and installing it:**
 
@@ -606,14 +606,14 @@ curl -s http://127.0.0.1:3800/api/plugins/wordpress/bridge/status
 # -> { "installed": true }  or  { "installed": false }
 
 # Download the file to the current directory (user then uploads to the site):
-curl -s http://127.0.0.1:3800/api/plugins/wordpress/bridge/mu-plugin -o devops-pilot-bridge.php
+curl -s http://127.0.0.1:3800/api/plugins/wordpress/bridge/mu-plugin -o symphonee-bridge.php
 
 # Or via PowerShell wrapper:
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File "./scripts/Install-WPBridge.ps1"
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File "./scripts/Test-WPBridge.ps1"
 ```
 
-**Where to put it:** `wp-content/mu-plugins/devops-pilot-bridge.php` on the target WordPress site. Create the directory if it does not exist. mu-plugins load automatically on every request -- no activation, no admin UI, cannot be turned off by site admins. This is intentional; it is a low-level bridge and should be invisible.
+**Where to put it:** `wp-content/mu-plugins/symphonee-bridge.php` on the target WordPress site. Create the directory if it does not exist. mu-plugins load automatically on every request -- no activation, no admin UI, cannot be turned off by site admins. This is intentional; it is a low-level bridge and should be invisible.
 
 **When to ask the user to install it:**
 - They asked you to edit a page built with Elementor/Breakdance/Bricks/Beaver/Divi and the write returned 200 with no change on the site
@@ -628,5 +628,5 @@ After installation, ALWAYS clear the Elementor CSS cache after any `_elementor_d
 
 ```bash
 curl -s -X POST -u "$WP_USER:$WP_APP_PASSWORD" \
-  https://site.com/wp-json/devops-pilot/v1/elementor/clear-cache/123
+  https://site.com/wp-json/symphonee/v1/elementor/clear-cache/123
 ```

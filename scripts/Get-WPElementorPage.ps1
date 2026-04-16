@@ -58,7 +58,7 @@ Write-Host ""
 
 if (-not $resp.data) {
     Write-Host "No Elementor data on this page. It is either a non-Elementor page or the bridge mu-plugin is not installed." -ForegroundColor Yellow
-    Write-Host "Install wp-mu-plugin/devops-pilot-bridge.php on the site to expose _elementor_data via REST." -ForegroundColor Yellow
+    Write-Host "Install wp-mu-plugin/symphonee-bridge.php on the site to expose _elementor_data via REST." -ForegroundColor Yellow
     exit 0
 }
 

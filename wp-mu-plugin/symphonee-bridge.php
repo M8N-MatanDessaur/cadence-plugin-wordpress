@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: DevOps Pilot Bridge
- * Description: Exposes page-builder post meta (Elementor, Breakdance, Bricks, Beaver, Divi) and SEO plugin meta (Yoast, RankMath) plus a handful of site helpers over the WordPress REST API so the DevOps Pilot WordPress plugin can read and write page layouts and SEO fields reliably. Drop this file into wp-content/mu-plugins/ so it loads before everything else and cannot be deactivated.
+ * Plugin Name: Symphonee Bridge
+ * Description: Exposes page-builder post meta (Elementor, Breakdance, Bricks, Beaver, Divi) and SEO plugin meta (Yoast, RankMath) plus a handful of site helpers over the WordPress REST API so the Symphonee WordPress plugin can read and write page layouts and SEO fields reliably. Drop this file into wp-content/mu-plugins/ so it loads before everything else and cannot be deactivated.
  * Version: 1.1.0
- * Author: DevOps Pilot
+ * Author: Symphonee
  *
  * This file is intentionally tiny and has no admin UI. It only does two things:
  *
@@ -12,9 +12,9 @@
  *      them. Without this, Elementor's _elementor_data field is invisible to the
  *      REST API, which is why third-party tools get "200 OK but nothing updates."
  *
- *   2. Adds a single helper route /devops-pilot/v1/builder-info/{id} that returns
+ *   2. Adds a single helper route /symphonee/v1/builder-info/{id} that returns
  *      which builder a given post is using, its version, and a hash of its data.
- *      The DevOps Pilot plugin uses this to detect builder choice without having
+ *      The Symphonee plugin uses this to detect builder choice without having
  *      to parse every meta field itself.
  *
  * Safe to ship to production: read callers require edit_posts, writes require
@@ -136,7 +136,7 @@ add_action('init', function () {
 
 // Custom endpoint: which builder is this post using, and what is a quick fingerprint of its data?
 add_action('rest_api_init', function () {
-    register_rest_route('devops-pilot/v1', '/builder-info/(?P<id>\d+)', array(
+    register_rest_route('symphonee/v1', '/builder-info/(?P<id>\d+)', array(
         'methods'             => 'GET',
         'permission_callback' => function ($req) {
             return current_user_can('edit_post', (int) $req['id']);
@@ -190,7 +190,7 @@ add_action('rest_api_init', function () {
     // Clear Elementor CSS cache for a post. Elementor caches rendered CSS in
     // _elementor_css meta; after a write via REST the cache needs to be
     // invalidated or the front end will show the old layout.
-    register_rest_route('devops-pilot/v1', '/elementor/clear-cache/(?P<id>\d+)', array(
+    register_rest_route('symphonee/v1', '/elementor/clear-cache/(?P<id>\d+)', array(
         'methods'             => 'POST',
         'permission_callback' => function ($req) {
             return current_user_can('edit_post', (int) $req['id']);

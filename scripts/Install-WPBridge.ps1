@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Download the DevOps Pilot bridge mu-plugin to the current directory so you
+  Download the Symphonee bridge mu-plugin to the current directory so you
   can upload it to the target WordPress site.
 
 .DESCRIPTION
-  The bridge mu-plugin (devops-pilot-bridge.php) registers page-builder meta
-  keys with show_in_rest=true so the DevOps Pilot WordPress plugin can
+  The bridge mu-plugin (symphonee-bridge.php) registers page-builder meta
+  keys with show_in_rest=true so the Symphonee WordPress plugin can
   reliably READ and WRITE Elementor, Breakdance, Bricks, Beaver, and Divi
   layouts via REST. Without it, writes to _elementor_data silently fail even
   though the API returns 200.
@@ -19,7 +19,7 @@
   new REST namespace.
 
 .PARAMETER Out
-  Path to write the file. Default: .\devops-pilot-bridge.php
+  Path to write the file. Default: .\symphonee-bridge.php
 
 .EXAMPLE
   .\Install-WPBridge.ps1
@@ -27,7 +27,7 @@
   .\Install-WPBridge.ps1 -Out C:\downloads\bridge.php
 #>
 param(
-    [string]$Out = '.\devops-pilot-bridge.php'
+    [string]$Out = '.\symphonee-bridge.php'
 )
 
 $ErrorActionPreference = 'Stop'

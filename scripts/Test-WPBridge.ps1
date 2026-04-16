@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Check whether the DevOps Pilot bridge mu-plugin is installed on the
+  Check whether the Symphonee bridge mu-plugin is installed on the
   configured WordPress site.
 
 .DESCRIPTION
   Hits /api/plugins/wordpress/bridge/status which inspects the remote WP
-  REST root for the devops-pilot/v1 namespace. If the namespace is present,
+  REST root for the symphonee/v1 namespace. If the namespace is present,
   the bridge is live and Elementor/Breakdance writes will persist. If not,
   run Install-WPBridge.ps1 and upload the file to wp-content/mu-plugins/.
 

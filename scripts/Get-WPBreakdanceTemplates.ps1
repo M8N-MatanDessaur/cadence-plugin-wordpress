@@ -4,7 +4,7 @@
   configured WordPress site.
 
 .DESCRIPTION
-  Queries the Breakdance CPT endpoints via the DevOps Pilot plugin proxy and
+  Queries the Breakdance CPT endpoints via the Symphonee plugin proxy and
   prints a readable grouped table. Use this before building a new page so
   you can reference existing headers / footers / sections rather than
   rebuilding from scratch.

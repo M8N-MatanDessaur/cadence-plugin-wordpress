@@ -79,7 +79,7 @@ function wpRequest(method, fullUrl, cfg, body, extraHeaders) {
       'Authorization': authHeader(cfg),
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'User-Agent': 'DevOps-Pilot-WordPress-Plugin',
+      'User-Agent': 'Symphonee-WordPress-Plugin',
     }, extraHeaders || {});
 
     const opts = {
@@ -1257,11 +1257,11 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
       // contents so the UI can offer a one-click download.
       if (subpath === '/bridge/mu-plugin' && method === 'GET') {
         try {
-          const p = path.join(__dirname, 'wp-mu-plugin', 'devops-pilot-bridge.php');
+          const p = path.join(__dirname, 'wp-mu-plugin', 'symphonee-bridge.php');
           const content = fs.readFileSync(p, 'utf8');
           res.writeHead(200, {
             'Content-Type': 'application/x-php',
-            'Content-Disposition': 'attachment; filename="devops-pilot-bridge.php"',
+            'Content-Disposition': 'attachment; filename="symphonee-bridge.php"',
             'Cache-Control': 'no-store',
           });
           res.end(content);
@@ -1290,7 +1290,7 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
               method: 'GET',
               headers: {
                 'Accept': 'application/json',
-                'User-Agent': 'DevOps-Pilot-Bridge-Check',
+                'User-Agent': 'Symphonee-Bridge-Check',
                 'Cache-Control': 'no-cache',
               },
             }, (resp) => {
@@ -1305,8 +1305,8 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
             req2.end();
           });
           const namespaces = (data && data.namespaces) || [];
-          const installed = namespaces.some(n => String(n).indexOf('devops-pilot/v1') !== -1);
-          return json(res, { installed, namespaces: installed ? ['devops-pilot/v1'] : [] });
+          const installed = namespaces.some(n => String(n).indexOf('symphonee/v1') !== -1);
+          return json(res, { installed, namespaces: installed ? ['symphonee/v1'] : [] });
         } catch (e) {
           return json(res, { installed: false, error: e.message });
         }

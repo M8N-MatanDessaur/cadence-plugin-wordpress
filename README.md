@@ -1,6 +1,6 @@
-# WordPress Plugin for DevOps Pilot
+# WordPress Plugin for Symphonee
 
-Manage WordPress sites end-to-end from DevOps Pilot. Posts, pages, media, categories, tags, comments, users, SEO metadata (Yoast / RankMath), and a raw REST passthrough for anything else (WooCommerce, ACF, custom post types).
+Manage WordPress sites end-to-end from Symphonee. Posts, pages, media, categories, tags, comments, users, SEO metadata (Yoast / RankMath), and a raw REST passthrough for anything else (WooCommerce, ACF, custom post types).
 
 ## Features
 
@@ -21,18 +21,18 @@ Manage WordPress sites end-to-end from DevOps Pilot. Posts, pages, media, catego
 ### Option 1: Install from local folder (dev)
 
 1. Clone this repo anywhere on disk
-2. In DevOps Pilot, call the install endpoint with the local path:
+2. In Symphonee, call the install endpoint with the local path:
    ```bash
    curl -s -X POST http://127.0.0.1:3800/api/plugins/install \
      -H "Content-Type: application/json" \
-     -d '{"path":"C:/path/to/devops-pilot-plugin-wordpress"}'
+     -d '{"path":"C:/path/to/symphonee-plugin-wordpress"}'
    ```
-3. Restart DevOps Pilot
+3. Restart Symphonee
 4. Open Settings > Plugins > WordPress and enter your credentials
 
 ### Option 2: Install from registry (once published)
 
-Use Settings > Plugins > Browse in DevOps Pilot and click Install.
+Use Settings > Plugins > Browse in Symphonee and click Install.
 
 ## Configuration
 
@@ -40,15 +40,15 @@ You need a WordPress **application password**, not your regular login password.
 
 1. Log in to wp-admin
 2. Go to **Users > Profile** (or Users > Your user)
-3. Scroll to **Application Passwords**, name it (e.g. "DevOps Pilot"), click **Add New Application Password**
+3. Scroll to **Application Passwords**, name it (e.g. "Symphonee"), click **Add New Application Password**
 4. Copy the generated password (format: `xxxx xxxx xxxx xxxx xxxx xxxx`) -- you only see it once
-5. In the DevOps Pilot WordPress tab, click the settings gear and enter:
+5. In the Symphonee WordPress tab, click the settings gear and enter:
    - **Site URL**: `https://yoursite.com` (no trailing slash)
    - **Username**: your wp-admin login name
    - **Application Password**: the generated password (keep the spaces)
 6. Click **Save & test**. The connection dot turns green on success.
 
-To revoke access, delete the application password in wp-admin -- DevOps Pilot loses access immediately.
+To revoke access, delete the application password in wp-admin -- Symphonee loses access immediately.
 
 ## API Routes
 

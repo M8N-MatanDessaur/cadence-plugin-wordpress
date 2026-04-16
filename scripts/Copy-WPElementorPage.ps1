@@ -66,5 +66,5 @@ Write-Host "Edit URL: $($resp.editUrl)"
 Write-Host ""
 Write-Host "Open in Elementor, iterate on the copy, then publish when ready." -ForegroundColor DarkGray
 Write-Host "If the editor opens without the cloned layout, install the bridge mu-plugin:" -ForegroundColor Yellow
-Write-Host "  curl -s http://127.0.0.1:3800/api/plugins/wordpress/bridge/mu-plugin -o devops-pilot-bridge.php" -ForegroundColor Yellow
+Write-Host "  curl -s http://127.0.0.1:3800/api/plugins/wordpress/bridge/mu-plugin -o symphonee-bridge.php" -ForegroundColor Yellow
 Write-Host "  Then upload it to wp-content/mu-plugins/ on the target site." -ForegroundColor Yellow

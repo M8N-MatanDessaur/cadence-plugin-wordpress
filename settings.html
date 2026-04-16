@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>WordPress Sites</title>
-<script src="/plugins/sdk/devops-pilot-sdk.js"></script>
+<script src="/plugins/sdk/symphonee-sdk.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { padding: 0; margin: 0; font-family: var(--font-ui); color: var(--text); background: transparent; }
@@ -183,7 +183,7 @@ async function saveForm() {
   const appPassword = document.getElementById('fPass').value;
 
   if (!name || !siteUrl || !username) {
-    DevOpsPilot.toast('Name, URL, and username are required.', 'error');
+    Symphonee.toast('Name, URL, and username are required.', 'error');
     return;
   }
 
@@ -195,18 +195,18 @@ async function saveForm() {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
     const data = await r.json();
-    if (data.error) { DevOpsPilot.toast(data.error, 'error'); return; }
-    DevOpsPilot.toast('Site updated.', 'success');
+    if (data.error) { Symphonee.toast(data.error, 'error'); return; }
+    Symphonee.toast('Site updated.', 'success');
   } else {
     // Add new site
-    if (!appPassword) { DevOpsPilot.toast('Application password is required for new sites.', 'error'); return; }
+    if (!appPassword) { Symphonee.toast('Application password is required for new sites.', 'error'); return; }
     const r = await fetch(API + '/sites', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, siteUrl, username, appPassword }),
     });
     const data = await r.json();
-    if (data.error) { DevOpsPilot.toast(data.error, 'error'); return; }
-    DevOpsPilot.toast('Site added.', 'success');
+    if (data.error) { Symphonee.toast(data.error, 'error'); return; }
+    Symphonee.toast('Site added.', 'success');
   }
 
   hideForm();
@@ -216,7 +216,7 @@ async function saveForm() {
 }
 
 function restartApp() {
-  DevOpsPilot.toast('Restarting app...', 'info');
+  Symphonee.toast('Restarting app...', 'info');
   setTimeout(() => {
     fetch('/api/restart-app', { method: 'POST' }).catch(() => {});
   }, 500);
@@ -229,7 +229,7 @@ async function setActive(name) {
   });
   await loadSites();
   notifyParent();
-  DevOpsPilot.toast('Switched to ' + name, 'success');
+  Symphonee.toast('Switched to ' + name, 'success');
 }
 
 function editSite(name) {
@@ -261,7 +261,7 @@ async function confirmRemove() {
   pendingRemove = null;
   await loadSites();
   notifyParent();
-  DevOpsPilot.toast('Site removed.', 'success');
+  Symphonee.toast('Site removed.', 'success');
 }
 function cancelRemove() {
   pendingRemove = null;
