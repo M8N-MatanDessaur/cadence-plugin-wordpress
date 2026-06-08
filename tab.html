@@ -919,7 +919,7 @@ function sendToAi(prompt) {
     if (window.Symphonee && typeof window.Symphonee.askAi === 'function') {
       window.Symphonee.askAi(prompt);
     } else {
-      window.parent.postMessage({ __devopsPilot: true, type: 'askAi', prompt: prompt }, location.origin);
+      window.parent.postMessage({ __symphonee: true, type: 'askAi', prompt: prompt }, location.origin);
     }
   } catch (_) {}
 }
@@ -1054,7 +1054,7 @@ async function checkConnection() {
 function openMainSettings() {
   try {
     window.parent.postMessage({
-      __devopsPilot: true,
+      __symphonee: true,
       type: 'openSettings',
       tab: 'plugins',
       plugin: 'wordpress',
@@ -2480,7 +2480,7 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
 // ── Listen for config changes from settings panel ─────────
 window.addEventListener('message', (event) => {
   const msg = event.data;
-  if (!msg || !msg.__devopsPilot) return;
+  if (!msg || !msg.__symphonee) return;
   if (msg.type === 'configChanged') {
     checkConnection().then(ok => {
       if (ok) loadDiscovery().then(() => { if (state.section) loadSection(); });

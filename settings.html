@@ -276,7 +276,7 @@ function togglePw() {
 function notifyParent() {
   // Tell the host app that WordPress config changed so the tab can refresh
   try {
-    window.parent.postMessage({ __devopsPilot: true, type: 'configChanged', plugin: 'wordpress' }, '*');
+    window.parent.postMessage({ __symphonee: true, type: 'configChanged', plugin: 'wordpress' }, '*');
   } catch (_) {}
 }
 
