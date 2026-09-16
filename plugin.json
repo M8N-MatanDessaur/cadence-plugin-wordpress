@@ -1,7 +1,7 @@
 {
   "id": "wordpress",
   "name": "WordPress",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "WordPress as a screen: every post type, items edited, scheduled, published and previewed, media with alt text, comment moderation, taxonomies, SEO insights, snapshots before every write, the site itself, and scripts for every CLI.",
   "icon": "feather",
   "tint": "33, 117, 155",
