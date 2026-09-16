@@ -178,6 +178,9 @@ function wpRequest(method, fullUrl, cfg, body, extraHeaders) {
       });
     });
     req.on('error', reject);
+    // A host that never answers used to hold the screen for the whole TCP timeout (a minute or
+    // more on Windows) with nothing said. Twelve seconds is long for a healthy site.
+    req.setTimeout(12000, () => { req.destroy(new Error(`${urlObj.hostname} did not answer within 12 seconds`)); });
     if (body !== undefined && body !== null) {
       if (Buffer.isBuffer(body) || typeof body === 'string') req.write(body);
       else req.write(JSON.stringify(body));
