@@ -1,35 +1,34 @@
-<#
+﻿<#
 .SYNOPSIS
-  Change the status of a WordPress post or page.
-
-.PARAMETER Id
-  Post or page ID.
-
-.PARAMETER Status
-  draft, publish, pending, private, future, trash.
-
-.PARAMETER Type
-  'posts' or 'pages'. Default: posts.
-
+    Changes the status of an item: publish, draft, pending, private, future (with -Date for future). A snapshot is taken first.
 .EXAMPLE
-  .\Set-WPPostStatus.ps1 -Id 42 -Status publish
+    ./scripts/Set-WPPostStatus.ps1 -Type pages -Id 28 -Status publish
 #>
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][int]$Id,
-    [Parameter(Mandatory = $true)][ValidateSet('draft', 'publish', 'pending', 'private', 'future', 'trash')][string]$Status,
-    [ValidateSet('posts', 'pages')][string]$Type = 'posts'
+    [string]$Type = 'pages',
+    [Parameter(Mandatory)][int]$Id,
+    [Parameter(Mandatory)][ValidateSet('publish','draft','pending','private','future')][string]$Status,
+    [string]$Date = '',
+    [string]$Site = ''
 )
-
 $ErrorActionPreference = 'Stop'
-$url = "http://127.0.0.1:3800/api/plugins/wordpress/$Type/$Id"
-$body = @{ status = $Status } | ConvertTo-Json -Compress
-
-try {
-    $resp = Invoke-RestMethod -Uri $url -Method Put -Body $body -ContentType 'application/json'
-    Write-Host "Updated $Type #$Id -> $Status" -ForegroundColor Green
-    Write-Host "  Title: $($resp.title.rendered)"
-    Write-Host "  Link:  $($resp.link)"
-} catch {
-    Write-Error "Failed: $($_.Exception.Message)"
-    exit 1
-}
+$CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
+$headers = @{}
+if ($env:CADENCE_TOKEN) { $headers['x-cadence-token'] = $env:CADENCE_TOKEN }
+# -Site names one of the configured WordPress sites; blank means the active one (or the one whose repository the shell is on).
+$siteQ = if ($PSBoundParameters.ContainsKey('Site') -and $Site) { "site=$([uri]::EscapeDataString($Site))" } elseif ($env:CADENCE_ACTIVE_REPO_PATH) { "repo=$([uri]::EscapeDataString($env:CADENCE_ACTIVE_REPO_PATH))" } else { '' }
+function With-Site($path) { if (-not $siteQ) { return $path }; if ($path.Contains('?')) { "$path&$siteQ" } else { "$path?$siteQ" } }
+function Get-Api($path) { Invoke-RestMethod -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300 }
+function Get-Text($path) { (Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300).Content }
+function Send-Api($method, $path, $payload) { $args = @{ Uri = "$CadenceApi$(With-Site $path)"; Method = $method; Headers = $headers; TimeoutSec = 300 }; if ($null -ne $payload) { $args.ContentType = 'application/json; charset=utf-8'; $args.Body = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 20)) }; Invoke-RestMethod @args }
+function Post-Api($path, $payload) { Send-Api 'POST' $path $payload }
+function Esc($s) { [uri]::EscapeDataString([string]$s) }
+# -InputObject, not the pipeline: Windows PowerShell 5.1 wraps a piped JSON array in a {value, Count} object, and an empty one prints nothing.
+function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
+function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
+function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
+$payload = @{ status = $Status }
+if ($Date) { $payload.date = $Date }
+$r = Fail-IfWpError (Send-Api 'PUT' "/api/plugins/wordpress/content/$(Esc $Type)/$Id" $payload)
+[pscustomobject]@{ ok = [bool]$r.id; id = $r.id; status = $r.status; date = $r.date; link = $r.link } | ConvertTo-Json

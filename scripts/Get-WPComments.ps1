@@ -1,14 +1,13 @@
 ﻿<#
 .SYNOPSIS
-    Takes a snapshot of an item now (every write takes one anyway).
+    Comments by status (hold = awaiting moderation).
 .EXAMPLE
-    ./scripts/Backup-WPItem.ps1 -Type pages -Id 28 -Reason "before rewrite"
+    ./scripts/Get-WPComments.ps1 -Status hold
 #>
 [CmdletBinding()]
 param(
-    [string]$Type = 'pages',
-    [Parameter(Mandatory)][int]$Id,
-    [string]$Reason = 'manual',
+    [ValidateSet('hold','approve','spam','trash','all')][string]$Status = 'hold',
+    [int]$Limit = 50,
     [string]$Site = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -27,4 +26,5 @@ function Esc($s) { [uri]::EscapeDataString([string]$s) }
 function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
 function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
 function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
-Post-Api '/api/plugins/wordpress/backup' @{ restBase = $Type; id = $Id; reason = $Reason } | ConvertTo-Json -Depth 4
+$r = Get-Api "/api/plugins/wordpress/comments?status=$Status&per_page=$Limit&_fields=id,post,parent,author_name,author_email,date,content,status,link"
+Out-Json @($r.items | ForEach-Object { [pscustomobject]@{ id = $_.id; post = $_.post; author = $_.author_name; email = $_.author_email; status = $_.status; date = $_.date; text = ($_.content.rendered -replace '<[^>]+>', '').Trim(); link = $_.link } }) 4

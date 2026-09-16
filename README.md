@@ -1,38 +1,38 @@
-# WordPress Plugin for Symphonee
+# Cadence Plugin: WordPress
 
-Manage WordPress sites end-to-end from Symphonee. Posts, pages, media, categories, tags, comments, users, SEO metadata (Yoast / RankMath), and a raw REST passthrough for anything else (WooCommerce, ACF, custom post types).
+WordPress as a screen inside Cadence 3.0, and a center tab in 2.0. Every post type the site has (core, custom, from any plugin), items edited, scheduled, published and previewed, media with alt text, comment moderation, taxonomies, SEO insights, a snapshot before every write, the site's theme, plugins and users, AI review and writing, and one PowerShell script per action so every CLI works the same way.
 
-## Features
+## The 3.0 surface
 
-- **Content CRUD** for posts and pages, including draft workflow, scheduling, and Gutenberg-compatible HTML
-- **Media library** with local file upload, remote URL upload, alt-text / caption / description editing, grid browser
-- **Categories and Tags** full CRUD, with parent hierarchy for categories
-- **Comment moderation** (approve / hold / spam / trash / reply / delete)
-- **Users** browser (read-only for safety)
-- **SEO panel** that reads and writes Yoast SEO _and_ RankMath meta fields in one shot, so it works regardless of which plugin is installed
-- **Site-wide search** across posts, pages, and media
-- **Plain-text summary** endpoint tuned for AI consumption
-- **Raw passthrough** for any `/wp-json/...` route (WooCommerce, ACF, custom post types, anything)
-- **Responsive dashboard UI** that adapts to screens from phone to widescreen
-- **PowerShell + Node helper scripts** for common tasks
+- **Overview**: content, what is not live, what to look at, comments waiting; the types, what changed last, what needs attention.
+- **Content**: post types as the site declares them (labels in the site's language), a type's items with status filters and paging, and an item as a form: title, slug, content as rich text or HTML (Monaco), excerpt, featured image picked from the library, every taxonomy of the type as chips with inline creation, parent and order, date, comments, SEO title, description and focus keyword with length counters. Save writes it after a snapshot; Publish, Unpublish, For review, Private, Schedule, Trash, Duplicate; a preview of the page; AI review, SEO and "write with AI" per field; page-builder layouts (Elementor and the like) summarised with their text, edited where they live.
+- **Media**: grid, upload from a URL, where a file is used, alt text, title and caption, delete when unused.
+- **Comments**: approve, hold, spam, trash, reply.
+- **Taxonomies**: every taxonomy, terms with counts, add, rename, remove.
+- **Insights**: drafts, pending, scheduled, stale, missing or long meta title and description, noindex, thin, no featured image, no excerpt, images without alt text.
+- **Backups**: every snapshot, viewable and restorable.
+- **Site**: theme, plugins, users, the bridge, the repository.
+- **Ask** and **Sites**: a question answered from read-only routes; several sites, each with an application password typed once and never shown again.
+
+Scripts live in `scripts/` (43 of them; see `instructions.md`).
 
 ## Installation
 
 ### Option 1: Install from local folder (dev)
 
 1. Clone this repo anywhere on disk
-2. In Symphonee, call the install endpoint with the local path:
+2. In Cadence, call the install endpoint with the local path:
    ```bash
    curl -s -X POST http://127.0.0.1:3800/api/plugins/install \
      -H "Content-Type: application/json" \
-     -d '{"path":"C:/path/to/symphonee-plugin-wordpress"}'
+     -d '{"path":"C:/path/to/cadence-plugin-wordpress"}'
    ```
-3. Restart Symphonee
+3. Restart Cadence
 4. Open Settings > Plugins > WordPress and enter your credentials
 
 ### Option 2: Install from registry (once published)
 
-Use Settings > Plugins > Browse in Symphonee and click Install.
+Use Settings > Plugins > Browse in Cadence and click Install.
 
 ## Configuration
 
@@ -40,15 +40,15 @@ You need a WordPress **application password**, not your regular login password.
 
 1. Log in to wp-admin
 2. Go to **Users > Profile** (or Users > Your user)
-3. Scroll to **Application Passwords**, name it (e.g. "Symphonee"), click **Add New Application Password**
+3. Scroll to **Application Passwords**, name it (e.g. "Cadence"), click **Add New Application Password**
 4. Copy the generated password (format: `xxxx xxxx xxxx xxxx xxxx xxxx`) -- you only see it once
-5. In the Symphonee WordPress tab, click the settings gear and enter:
+5. In the Cadence WordPress tab, click the settings gear and enter:
    - **Site URL**: `https://yoursite.com` (no trailing slash)
    - **Username**: your wp-admin login name
    - **Application Password**: the generated password (keep the spaces)
 6. Click **Save & test**. The connection dot turns green on success.
 
-To revoke access, delete the application password in wp-admin -- Symphonee loses access immediately.
+To revoke access, delete the application password in wp-admin -- Cadence loses access immediately.
 
 ## API Routes
 

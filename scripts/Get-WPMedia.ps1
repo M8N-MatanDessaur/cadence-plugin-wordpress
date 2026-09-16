@@ -1,14 +1,15 @@
 ﻿<#
 .SYNOPSIS
-    Takes a snapshot of an item now (every write takes one anyway).
+    The media library, newest first: id, title, alt text, URL, type, dimensions; -Query searches, -Kind image|video|application.
 .EXAMPLE
-    ./scripts/Backup-WPItem.ps1 -Type pages -Id 28 -Reason "before rewrite"
+    ./scripts/Get-WPMedia.ps1 -Kind image -Query logo
 #>
 [CmdletBinding()]
 param(
-    [string]$Type = 'pages',
-    [Parameter(Mandatory)][int]$Id,
-    [string]$Reason = 'manual',
+    [string]$Kind = '',
+    [string]$Query = '',
+    [int]$PerPage = 48,
+    [int]$Page = 1,
     [string]$Site = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -27,4 +28,5 @@ function Esc($s) { [uri]::EscapeDataString([string]$s) }
 function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
 function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
 function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
-Post-Api '/api/plugins/wordpress/backup' @{ restBase = $Type; id = $Id; reason = $Reason } | ConvertTo-Json -Depth 4
+$r = Get-Api "/api/plugins/wordpress/media?per_page=$PerPage&page=$Page&search=$(Esc $Query)$(if ($Kind) { "&media_type=$Kind" })&_fields=id,title,alt_text,source_url,mime_type,media_details,date"
+[pscustomobject]@{ total = [int]$r.total; totalPages = [int]$r.totalPages; items = @($r.items | ForEach-Object { [pscustomobject]@{ id = $_.id; title = $_.title.rendered; alt = $_.alt_text; url = $_.source_url; type = $_.mime_type; width = $_.media_details.width; height = $_.media_details.height; size = $_.media_details.filesize; date = $_.date } }) } | ConvertTo-Json -Depth 5

@@ -1,53 +1,28 @@
-<#
+﻿<#
 .SYNOPSIS
-  Download the Symphonee bridge mu-plugin to the current directory so you
-  can upload it to the target WordPress site.
-
-.DESCRIPTION
-  The bridge mu-plugin (symphonee-bridge.php) registers page-builder meta
-  keys with show_in_rest=true so the Symphonee WordPress plugin can
-  reliably READ and WRITE Elementor, Breakdance, Bricks, Beaver, and Divi
-  layouts via REST. Without it, writes to _elementor_data silently fail even
-  though the API returns 200.
-
-  This script fetches the file from the local plugin and writes it to the
-  current directory. You then upload it to wp-content/mu-plugins/ on the
-  target site, either via SFTP, the cPanel file manager, or a plugin like
-  Advanced File Manager. No activation needed, mu-plugins load automatically.
-
-  After installation, call Test-WPBridge.ps1 to verify the site reports the
-  new REST namespace.
-
-.PARAMETER Out
-  Path to write the file. Default: .\symphonee-bridge.php
-
+    Downloads the bridge mu-plugin (cadence-bridge.php) to upload into wp-content/mu-plugins/ on the site.
 .EXAMPLE
-  .\Install-WPBridge.ps1
-.EXAMPLE
-  .\Install-WPBridge.ps1 -Out C:\downloads\bridge.php
+    ./scripts/Install-WPBridge.ps1 -Out ./cadence-bridge.php
 #>
+[CmdletBinding()]
 param(
-    [string]$Out = '.\symphonee-bridge.php'
+    [string]$Out = './cadence-bridge.php'
 )
-
 $ErrorActionPreference = 'Stop'
-$url = 'http://127.0.0.1:3800/api/plugins/wordpress/bridge/mu-plugin'
-
-try {
-    Invoke-WebRequest -Uri $url -OutFile $Out -UseBasicParsing
-} catch {
-    Write-Error "Failed to download bridge: $($_.Exception.Message)"
-    exit 1
-}
-
-$resolved = (Resolve-Path $Out).Path
-Write-Host ""
-Write-Host "Downloaded bridge mu-plugin to:" -ForegroundColor Green
-Write-Host "  $resolved"
-Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Upload the file to wp-content/mu-plugins/ on the target WordPress site."
-Write-Host "     (Create the mu-plugins directory if it does not already exist.)"
-Write-Host "  2. No activation needed. mu-plugins load automatically."
-Write-Host "  3. Verify: .\scripts\Test-WPBridge.ps1"
-Write-Host ""
+$CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
+$headers = @{}
+if ($env:CADENCE_TOKEN) { $headers['x-cadence-token'] = $env:CADENCE_TOKEN }
+# -Site names one of the configured WordPress sites; blank means the active one (or the one whose repository the shell is on).
+$siteQ = if ($PSBoundParameters.ContainsKey('Site') -and $Site) { "site=$([uri]::EscapeDataString($Site))" } elseif ($env:CADENCE_ACTIVE_REPO_PATH) { "repo=$([uri]::EscapeDataString($env:CADENCE_ACTIVE_REPO_PATH))" } else { '' }
+function With-Site($path) { if (-not $siteQ) { return $path }; if ($path.Contains('?')) { "$path&$siteQ" } else { "$path?$siteQ" } }
+function Get-Api($path) { Invoke-RestMethod -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300 }
+function Get-Text($path) { (Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300).Content }
+function Send-Api($method, $path, $payload) { $args = @{ Uri = "$CadenceApi$(With-Site $path)"; Method = $method; Headers = $headers; TimeoutSec = 300 }; if ($null -ne $payload) { $args.ContentType = 'application/json; charset=utf-8'; $args.Body = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 20)) }; Invoke-RestMethod @args }
+function Post-Api($path, $payload) { Send-Api 'POST' $path $payload }
+function Esc($s) { [uri]::EscapeDataString([string]$s) }
+# -InputObject, not the pipeline: Windows PowerShell 5.1 wraps a piped JSON array in a {value, Count} object, and an empty one prints nothing.
+function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
+function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
+function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
+Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi/api/plugins/wordpress/bridge/mu-plugin" -Headers $headers -OutFile $Out
+[pscustomobject]@{ ok = $true; file = (Resolve-Path -LiteralPath $Out).Path; next = 'Upload it to wp-content/mu-plugins/ on the site (no activation needed), then run Test-WPBridge.ps1.' } | ConvertTo-Json

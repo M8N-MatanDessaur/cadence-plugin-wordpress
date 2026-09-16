@@ -1,14 +1,16 @@
 ﻿<#
 .SYNOPSIS
-    Takes a snapshot of an item now (every write takes one anyway).
+    Items of a post type, one row each: id, title, status, slug, link, modified, builder, word count, SEO title and description.
 .EXAMPLE
-    ./scripts/Backup-WPItem.ps1 -Type pages -Id 28 -Reason "before rewrite"
+    ./scripts/Get-WPItems.ps1 -Type pages -Status draft
 #>
 [CmdletBinding()]
 param(
     [string]$Type = 'pages',
-    [Parameter(Mandatory)][int]$Id,
-    [string]$Reason = 'manual',
+    [string]$Query = '',
+    [string]$Status = 'any',
+    [int]$PerPage = 50,
+    [int]$Page = 1,
     [string]$Site = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -27,4 +29,4 @@ function Esc($s) { [uri]::EscapeDataString([string]$s) }
 function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
 function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
 function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
-Post-Api '/api/plugins/wordpress/backup' @{ restBase = $Type; id = $Id; reason = $Reason } | ConvertTo-Json -Depth 4
+Get-Api "/api/plugins/wordpress/entries?type=$(Esc $Type)&q=$(Esc $Query)&status=$Status&per_page=$PerPage&page=$Page" | ConvertTo-Json -Depth 6

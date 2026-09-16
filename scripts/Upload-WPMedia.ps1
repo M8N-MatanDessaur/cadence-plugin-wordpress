@@ -1,14 +1,15 @@
 ﻿<#
 .SYNOPSIS
-    Takes a snapshot of an item now (every write takes one anyway).
+    Uploads a local file to the library, with optional alt text, title, caption.
 .EXAMPLE
-    ./scripts/Backup-WPItem.ps1 -Type pages -Id 28 -Reason "before rewrite"
+    ./scripts/Upload-WPMedia.ps1 -Path C:/images/hero.jpg -AltText "..."
 #>
 [CmdletBinding()]
 param(
-    [string]$Type = 'pages',
-    [Parameter(Mandatory)][int]$Id,
-    [string]$Reason = 'manual',
+    [Parameter(Mandatory)][string]$Path,
+    [string]$AltText = '',
+    [string]$Title = '',
+    [string]$Caption = '',
     [string]$Site = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -27,4 +28,10 @@ function Esc($s) { [uri]::EscapeDataString([string]$s) }
 function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
 function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
 function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
-Post-Api '/api/plugins/wordpress/backup' @{ restBase = $Type; id = $Id; reason = $Reason } | ConvertTo-Json -Depth 4
+$full = (Resolve-Path -LiteralPath $Path).Path
+$payload = @{ filePath = $full }
+if ($AltText) { $payload.alt_text = $AltText }
+if ($Title) { $payload.title = $Title }
+if ($Caption) { $payload.caption = $Caption }
+$r = Fail-IfWpError (Post-Api '/api/plugins/wordpress/media/upload' $payload)
+[pscustomobject]@{ ok = [bool]$r.id; id = $r.id; url = $r.source_url; alt = $r.alt_text } | ConvertTo-Json

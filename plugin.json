@@ -1,8 +1,8 @@
 {
   "id": "wordpress",
   "name": "WordPress",
-  "version": "1.1.1",
-  "description": "Manage WordPress sites via the REST API -- create and edit posts, pages, media, categories, comments, users, and SEO metadata (Yoast / RankMath)",
+  "version": "2.0.2",
+  "description": "WordPress as a screen: every post type, items edited, scheduled, published and previewed, media with alt text, comment moderation, taxonomies, SEO insights, snapshots before every write, the site itself, and scripts for every CLI.",
   "icon": "feather",
   "tint": "33, 117, 155",
   "instructions": "instructions.md",
@@ -41,6 +41,598 @@
         "html": "tab.html"
       }
     ],
-    "routes": "routes.js"
-  }
+    "routes": "routes.js",
+    "surfaces": [
+      {
+        "id": "wordpress",
+        "title": "WordPress",
+        "icon": "globe",
+        "mount": "rail",
+        "entry": "ui/wp.js",
+        "sidebar": true,
+        "aside": true
+      }
+    ],
+    "scripts": [
+      {
+        "file": "Get-WPHealth.ps1",
+        "label": "Health",
+        "description": "Types, counts, drafts, comments, media, issues.",
+        "args": []
+      },
+      {
+        "file": "Get-WPSummary.ps1",
+        "label": "Summary",
+        "description": "Plain-text summary.",
+        "args": []
+      },
+      {
+        "file": "Get-WPDiscover.ps1",
+        "label": "Discover",
+        "description": "Post types, taxonomies, plugins.",
+        "args": []
+      },
+      {
+        "file": "Get-WPSiteContext.ps1",
+        "label": "Site context",
+        "description": "Theme, plugins, users, bridge, types.",
+        "args": []
+      },
+      {
+        "file": "Get-WPItems.ps1",
+        "label": "Items",
+        "description": "Items of a type, one row each.",
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base (pages, posts, product...)",
+            "default": "pages"
+          },
+          {
+            "name": "Query",
+            "label": "Search",
+            "default": ""
+          },
+          {
+            "name": "Status",
+            "label": "any | publish | draft | pending | future | private | trash",
+            "default": "any"
+          }
+        ]
+      },
+      {
+        "file": "Find-WPContent.ps1",
+        "label": "Search",
+        "description": "Find content by text.",
+        "args": [
+          {
+            "name": "Query",
+            "label": "Text"
+          }
+        ]
+      },
+      {
+        "file": "Get-WPItem.ps1",
+        "label": "Read an item",
+        "description": "One item with everything resolved.",
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "pages"
+          },
+          {
+            "name": "Id",
+            "label": "Id"
+          }
+        ]
+      },
+      {
+        "file": "New-WPItem.ps1",
+        "label": "New item",
+        "description": "Creates an item from a JSON file (draft by default).",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "posts"
+          },
+          {
+            "name": "JsonFile",
+            "label": "JSON file"
+          }
+        ]
+      },
+      {
+        "file": "Update-WPItem.ps1",
+        "label": "Update an item",
+        "description": "Sets fields from a JSON file (snapshot first).",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "pages"
+          },
+          {
+            "name": "Id",
+            "label": "Id"
+          },
+          {
+            "name": "JsonFile",
+            "label": "JSON file"
+          }
+        ]
+      },
+      {
+        "file": "Set-WPPostStatus.ps1",
+        "label": "Set status",
+        "description": "publish, draft, pending, private, future.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "pages"
+          },
+          {
+            "name": "Id",
+            "label": "Id"
+          },
+          {
+            "name": "Status",
+            "label": "publish | draft | pending | private | future"
+          }
+        ]
+      },
+      {
+        "file": "Remove-WPItem.ps1",
+        "label": "Trash or delete",
+        "description": "Trash (or -Force delete) an item.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "posts"
+          },
+          {
+            "name": "Id",
+            "label": "Id"
+          }
+        ]
+      },
+      {
+        "file": "Copy-WPItem.ps1",
+        "label": "Duplicate",
+        "description": "Copies an item as a new draft.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "pages"
+          },
+          {
+            "name": "Id",
+            "label": "Id"
+          }
+        ]
+      },
+      {
+        "file": "Get-WPSeo.ps1",
+        "label": "Read SEO",
+        "description": "Yoast and Rank Math fields of an item.",
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "pages"
+          },
+          {
+            "name": "Id",
+            "label": "Id"
+          }
+        ]
+      },
+      {
+        "file": "Update-WPSeo.ps1",
+        "label": "Write SEO",
+        "description": "Meta title, description, focus keyword.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "pages"
+          },
+          {
+            "name": "Id",
+            "label": "Id"
+          },
+          {
+            "name": "Title",
+            "label": "Meta title",
+            "default": ""
+          },
+          {
+            "name": "Description",
+            "label": "Meta description",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "file": "Get-WPInsights.ps1",
+        "label": "Insights",
+        "description": "Items with a problem, by kind.",
+        "args": [
+          {
+            "name": "Kind",
+            "label": "draft | pending | scheduled | stale | missing-seo-title | missing-seo-description | long-seo-title | long-seo-description | noindex | thin | no-featured-image | no-excerpt",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "file": "Get-WPMedia.ps1",
+        "label": "Media",
+        "description": "The library with alt text.",
+        "args": [
+          {
+            "name": "Kind",
+            "label": "image | video | application",
+            "default": ""
+          },
+          {
+            "name": "Query",
+            "label": "Search",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "file": "Get-WPMediaUsage.ps1",
+        "label": "Media usage",
+        "description": "Items using a file.",
+        "args": [
+          {
+            "name": "Id",
+            "label": "Media id"
+          }
+        ]
+      },
+      {
+        "file": "Set-WPMediaAlt.ps1",
+        "label": "Set alt text",
+        "description": "Alt text, title, caption of a file.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Id",
+            "label": "Media id"
+          },
+          {
+            "name": "AltText",
+            "label": "Alt text"
+          }
+        ]
+      },
+      {
+        "file": "Upload-WPMedia.ps1",
+        "label": "Upload a file",
+        "description": "A local file into the library.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Path",
+            "label": "Local file"
+          },
+          {
+            "name": "AltText",
+            "label": "Alt text",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "file": "Upload-WPMediaUrl.ps1",
+        "label": "Upload from a URL",
+        "description": "A remote file into the library.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Url",
+            "label": "URL"
+          }
+        ]
+      },
+      {
+        "file": "Remove-WPMedia.ps1",
+        "label": "Delete a file",
+        "description": "Permanently deletes a file (checks usage).",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Id",
+            "label": "Media id"
+          }
+        ]
+      },
+      {
+        "file": "Get-WPTerms.ps1",
+        "label": "Terms",
+        "description": "Terms of a taxonomy.",
+        "args": [
+          {
+            "name": "Taxonomy",
+            "label": "Rest base (categories, tags, product_cat...)",
+            "default": "categories"
+          }
+        ]
+      },
+      {
+        "file": "New-WPTerm.ps1",
+        "label": "New term",
+        "description": "Adds a term.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Taxonomy",
+            "label": "Rest base",
+            "default": "categories"
+          },
+          {
+            "name": "Name",
+            "label": "Name"
+          }
+        ]
+      },
+      {
+        "file": "Update-WPTerm.ps1",
+        "label": "Update a term",
+        "description": "Rename or describe a term.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Taxonomy",
+            "label": "Rest base",
+            "default": "categories"
+          },
+          {
+            "name": "Id",
+            "label": "Term id"
+          }
+        ]
+      },
+      {
+        "file": "Remove-WPTerm.ps1",
+        "label": "Remove a term",
+        "description": "Removes a term.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Taxonomy",
+            "label": "Rest base",
+            "default": "categories"
+          },
+          {
+            "name": "Id",
+            "label": "Term id"
+          }
+        ]
+      },
+      {
+        "file": "Get-WPComments.ps1",
+        "label": "Comments",
+        "description": "Comments by status.",
+        "args": [
+          {
+            "name": "Status",
+            "label": "hold | approve | spam | trash | all",
+            "default": "hold"
+          }
+        ]
+      },
+      {
+        "file": "Set-WPCommentStatus.ps1",
+        "label": "Moderate a comment",
+        "description": "approve, hold, spam, trash.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Id",
+            "label": "Comment id"
+          },
+          {
+            "name": "Action",
+            "label": "approve | hold | spam | trash"
+          }
+        ]
+      },
+      {
+        "file": "Reply-WPComment.ps1",
+        "label": "Reply to a comment",
+        "description": "Posts a public reply.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Id",
+            "label": "Comment id"
+          },
+          {
+            "name": "Post",
+            "label": "Post id"
+          },
+          {
+            "name": "Text",
+            "label": "Reply"
+          }
+        ]
+      },
+      {
+        "file": "Get-WPUsers.ps1",
+        "label": "Users",
+        "description": "Users and roles.",
+        "args": []
+      },
+      {
+        "file": "Backup-WPItem.ps1",
+        "label": "Snapshot",
+        "description": "Snapshots an item.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "pages"
+          },
+          {
+            "name": "Id",
+            "label": "Id"
+          }
+        ]
+      },
+      {
+        "file": "Get-WPBackups.ps1",
+        "label": "Snapshots",
+        "description": "Snapshots, newest first.",
+        "args": [
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": ""
+          },
+          {
+            "name": "Id",
+            "label": "Id",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "file": "Restore-WPItem.ps1",
+        "label": "Restore",
+        "description": "Restores from a snapshot.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "BackupId",
+            "label": "Snapshot id"
+          }
+        ]
+      },
+      {
+        "file": "Get-WPElementorPage.ps1",
+        "label": "Elementor layout",
+        "description": "Sections, widgets and text of a page.",
+        "args": [
+          {
+            "name": "Id",
+            "label": "Id"
+          },
+          {
+            "name": "Type",
+            "label": "Rest base",
+            "default": "pages"
+          }
+        ]
+      },
+      {
+        "file": "Get-WPElementorTemplates.ps1",
+        "label": "Elementor templates",
+        "description": "The Elementor library.",
+        "args": []
+      },
+      {
+        "file": "Copy-WPElementorPage.ps1",
+        "label": "Clone an Elementor page",
+        "description": "Onto a new draft.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "SourceId",
+            "label": "Source id"
+          },
+          {
+            "name": "Title",
+            "label": "Title",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "file": "Get-WPBreakdanceTemplates.ps1",
+        "label": "Breakdance templates",
+        "description": "The Breakdance library.",
+        "args": []
+      },
+      {
+        "file": "Test-WPBridge.ps1",
+        "label": "Bridge status",
+        "description": "Is the bridge installed?",
+        "args": []
+      },
+      {
+        "file": "Install-WPBridge.ps1",
+        "label": "Download the bridge",
+        "description": "The mu-plugin file to upload.",
+        "args": []
+      },
+      {
+        "file": "Invoke-WPRaw.ps1",
+        "label": "Raw REST call",
+        "description": "Any wp-json route.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Path",
+            "label": "Path"
+          },
+          {
+            "name": "Method",
+            "label": "Method",
+            "default": "GET"
+          }
+        ]
+      },
+      {
+        "file": "Get-WPSites.ps1",
+        "label": "Sites",
+        "description": "Configured sites.",
+        "args": []
+      },
+      {
+        "file": "Switch-WPSite.ps1",
+        "label": "Switch site",
+        "description": "Sets the active site.",
+        "mutates": true,
+        "args": [
+          {
+            "name": "Name",
+            "label": "Site name"
+          }
+        ]
+      },
+      {
+        "file": "Test-WPConnection.ps1",
+        "label": "Test the login",
+        "description": "Who the password signs in as.",
+        "args": []
+      },
+      {
+        "file": "Test-WPPreview.ps1",
+        "label": "Test a URL",
+        "description": "Is the page reachable?",
+        "args": [
+          {
+            "name": "Url",
+            "label": "URL"
+          }
+        ]
+      }
+    ]
+  },
+  "sdkVersion": 3
 }

@@ -1,101 +1,31 @@
-<#
+﻿<#
 .SYNOPSIS
-  Fetch the raw Elementor layout JSON for a page or post.
-
-.DESCRIPTION
-  Reads _elementor_data for the specified post and prints a summary of the
-  widget tree (section count, column count, widget count, widget types used)
-  plus the edit URL. Pass -Full to dump the raw parsed JSON instead.
-
-  Use this when you need to understand what is actually on a page before
-  suggesting changes. Walking the tree server-side is much faster than
-  fetching the rendered HTML and guessing.
-
-.PARAMETER Id
-  The post id.
-
-.PARAMETER Type
-  The REST base (pages, posts, or any CPT rest base). Default: pages.
-
-.PARAMETER Full
-  Dump the full parsed _elementor_data JSON instead of the summary.
-
+    The Elementor layout of a page: a summary of sections, widgets and text, and with -Full the raw data.
 .EXAMPLE
-  .\Get-WPElementorPage.ps1 -Id 123
-.EXAMPLE
-  .\Get-WPElementorPage.ps1 -Id 123 -Type posts -Full
+    ./scripts/Get-WPElementorPage.ps1 -Id 28
 #>
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][int]$Id,
+    [Parameter(Mandatory)][int]$Id,
     [string]$Type = 'pages',
-    [switch]$Full
+    [switch]$Full,
+    [string]$Site = ''
 )
-
 $ErrorActionPreference = 'Stop'
-$url = "http://127.0.0.1:3800/api/plugins/wordpress/elementor/page/$Id`?type=$Type"
-
-try {
-    $resp = Invoke-RestMethod -Uri $url -Method Get
-} catch {
-    Write-Error "Failed to fetch Elementor page: $($_.Exception.Message)"
-    exit 1
-}
-
-if ($Full) {
-    $resp | ConvertTo-Json -Depth 20
-    exit 0
-}
-
-Write-Host ""
-Write-Host "Elementor page #$($resp.id): $($resp.title)" -ForegroundColor Cyan
-Write-Host ("-" * 80)
-Write-Host "Edit mode    : $($resp.editMode)"
-Write-Host "Version      : $($resp.version)"
-Write-Host "Template type: $($resp.template)"
-Write-Host "Public URL   : $($resp.link)"
-Write-Host "Edit URL     : $($resp.editUrl)"
-Write-Host ""
-
-if (-not $resp.data) {
-    Write-Host "No Elementor data on this page. It is either a non-Elementor page or the bridge mu-plugin is not installed." -ForegroundColor Yellow
-    Write-Host "Install wp-mu-plugin/symphonee-bridge.php on the site to expose _elementor_data via REST." -ForegroundColor Yellow
-    exit 0
-}
-
-# Walk the tree and count elements
-$sections = 0
-$columns = 0
-$widgets = 0
-$widgetTypes = @{}
-
-function Walk-Node($node) {
-    if (-not $node) { return }
-    if ($node.elType -eq 'section' -or $node.elType -eq 'container') { $script:sections++ }
-    elseif ($node.elType -eq 'column') { $script:columns++ }
-    elseif ($node.elType -eq 'widget') {
-        $script:widgets++
-        $t = $node.widgetType
-        if ($t) {
-            if ($script:widgetTypes.ContainsKey($t)) { $script:widgetTypes[$t]++ }
-            else { $script:widgetTypes[$t] = 1 }
-        }
-    }
-    if ($node.elements) {
-        foreach ($child in $node.elements) { Walk-Node $child }
-    }
-}
-
-foreach ($top in $resp.data) { Walk-Node $top }
-
-Write-Host "Layout summary" -ForegroundColor Cyan
-Write-Host "  Sections/containers: $sections"
-Write-Host "  Columns            : $columns"
-Write-Host "  Widgets            : $widgets"
-Write-Host ""
-Write-Host "Widget types used" -ForegroundColor Cyan
-$widgetTypes.GetEnumerator() | Sort-Object -Property Value -Descending | ForEach-Object {
-    $n = "{0,4}" -f $_.Value
-    Write-Host "  $n  $($_.Key)"
-}
-Write-Host ""
-Write-Host "Pass -Full to see the complete parsed JSON." -ForegroundColor DarkGray
+$CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
+$headers = @{}
+if ($env:CADENCE_TOKEN) { $headers['x-cadence-token'] = $env:CADENCE_TOKEN }
+# -Site names one of the configured WordPress sites; blank means the active one (or the one whose repository the shell is on).
+$siteQ = if ($PSBoundParameters.ContainsKey('Site') -and $Site) { "site=$([uri]::EscapeDataString($Site))" } elseif ($env:CADENCE_ACTIVE_REPO_PATH) { "repo=$([uri]::EscapeDataString($env:CADENCE_ACTIVE_REPO_PATH))" } else { '' }
+function With-Site($path) { if (-not $siteQ) { return $path }; if ($path.Contains('?')) { "$path&$siteQ" } else { "$path?$siteQ" } }
+function Get-Api($path) { Invoke-RestMethod -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300 }
+function Get-Text($path) { (Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300).Content }
+function Send-Api($method, $path, $payload) { $args = @{ Uri = "$CadenceApi$(With-Site $path)"; Method = $method; Headers = $headers; TimeoutSec = 300 }; if ($null -ne $payload) { $args.ContentType = 'application/json; charset=utf-8'; $args.Body = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 20)) }; Invoke-RestMethod @args }
+function Post-Api($path, $payload) { Send-Api 'POST' $path $payload }
+function Esc($s) { [uri]::EscapeDataString([string]$s) }
+# -InputObject, not the pipeline: Windows PowerShell 5.1 wraps a piped JSON array in a {value, Count} object, and an empty one prints nothing.
+function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
+function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
+function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
+$r = Get-Api "/api/plugins/wordpress/elementor/page/$Id`?type=$(Esc $Type)"
+if ($Full) { $r | ConvertTo-Json -Depth 40 } else { [pscustomobject]@{ id = $r.id; title = $r.title; editMode = $r.editMode; version = $r.version; summary = $r.summary; editUrl = $r.editUrl } | ConvertTo-Json -Depth 6 }

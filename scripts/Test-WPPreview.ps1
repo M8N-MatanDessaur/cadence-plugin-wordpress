@@ -1,15 +1,12 @@
 ﻿<#
 .SYNOPSIS
-    Takes a snapshot of an item now (every write takes one anyway).
+    Is a URL of the site reachable?
 .EXAMPLE
-    ./scripts/Backup-WPItem.ps1 -Type pages -Id 28 -Reason "before rewrite"
+    ./scripts/Test-WPPreview.ps1 -Url https://example.com/about
 #>
 [CmdletBinding()]
 param(
-    [string]$Type = 'pages',
-    [Parameter(Mandatory)][int]$Id,
-    [string]$Reason = 'manual',
-    [string]$Site = ''
+    [Parameter(Mandatory)][string]$Url
 )
 $ErrorActionPreference = 'Stop'
 $CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
@@ -27,4 +24,4 @@ function Esc($s) { [uri]::EscapeDataString([string]$s) }
 function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
 function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
 function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
-Post-Api '/api/plugins/wordpress/backup' @{ restBase = $Type; id = $Id; reason = $Reason } | ConvertTo-Json -Depth 4
+try { $r = Invoke-WebRequest -UseBasicParsing -Uri $Url -Method Head -TimeoutSec 20; [pscustomobject]@{ ok = $true; status = [int]$r.StatusCode } | ConvertTo-Json } catch { [pscustomobject]@{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json }

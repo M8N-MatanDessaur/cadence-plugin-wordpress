@@ -1,14 +1,13 @@
 ﻿<#
 .SYNOPSIS
-    Takes a snapshot of an item now (every write takes one anyway).
+    Approves, holds, spams or trashes a comment.
 .EXAMPLE
-    ./scripts/Backup-WPItem.ps1 -Type pages -Id 28 -Reason "before rewrite"
+    ./scripts/Set-WPCommentStatus.ps1 -Id 123 -Action approve
 #>
 [CmdletBinding()]
 param(
-    [string]$Type = 'pages',
     [Parameter(Mandatory)][int]$Id,
-    [string]$Reason = 'manual',
+    [Parameter(Mandatory)][ValidateSet('approve','hold','spam','trash')][string]$Action,
     [string]$Site = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -27,4 +26,4 @@ function Esc($s) { [uri]::EscapeDataString([string]$s) }
 function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
 function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
 function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
-Post-Api '/api/plugins/wordpress/backup' @{ restBase = $Type; id = $Id; reason = $Reason } | ConvertTo-Json -Depth 4
+Fail-IfWpError (Post-Api "/api/plugins/wordpress/comments/$Id/$Action" @{}) | Select-Object -Property id, status | ConvertTo-Json

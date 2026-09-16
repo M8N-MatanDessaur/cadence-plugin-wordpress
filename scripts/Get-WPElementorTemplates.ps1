@@ -1,70 +1,27 @@
-<#
+﻿<#
 .SYNOPSIS
-  List every Elementor library template on the configured WordPress site.
-
-.DESCRIPTION
-  Hits /api/plugins/wordpress/elementor/templates and prints a readable
-  table. Templates include saved pages, sections, headers, footers, popups,
-  and individual widgets. Each row shows the template id, its type, slug,
-  status, and the direct edit URL.
-
-  Use this before any "build a page like the homepage" workflow so you can
-  pick a known-good starting point.
-
-.PARAMETER Type
-  Filter by template type: page, section, header, footer, popup, widget.
-  Omit to see everything.
-
-.PARAMETER Json
-  Return raw JSON instead of a formatted table. Useful when piping to other
-  scripts or to the AI terminal.
-
+    The Elementor library: saved sections, pages, headers, footers, popups.
 .EXAMPLE
-  .\Get-WPElementorTemplates.ps1
-.EXAMPLE
-  .\Get-WPElementorTemplates.ps1 -Type header
-.EXAMPLE
-  .\Get-WPElementorTemplates.ps1 -Json
+    ./scripts/Get-WPElementorTemplates.ps1
 #>
+[CmdletBinding()]
 param(
-    [string]$Type,
-    [switch]$Json
+    [string]$Site = ''
 )
-
 $ErrorActionPreference = 'Stop'
-$url = 'http://127.0.0.1:3800/api/plugins/wordpress/elementor/templates'
-
-try {
-    $resp = Invoke-RestMethod -Uri $url -Method Get
-} catch {
-    Write-Error "Failed to fetch Elementor templates: $($_.Exception.Message)"
-    Write-Host "Is Elementor active on the site? Check /discover." -ForegroundColor Yellow
-    exit 1
-}
-
-$items = $resp.items
-if ($Type) {
-    $items = $items | Where-Object { $_.type -eq $Type }
-}
-
-if ($Json) {
-    $items | ConvertTo-Json -Depth 5
-    exit 0
-}
-
-if (-not $items -or $items.Count -eq 0) {
-    Write-Host "No Elementor templates found$(if ($Type) { " of type '$Type'" })." -ForegroundColor Yellow
-    exit 0
-}
-
-Write-Host ""
-Write-Host "Elementor library ($($items.Count) template$(if ($items.Count -ne 1) {'s'}))" -ForegroundColor Cyan
-Write-Host ("-" * 80)
-$items | ForEach-Object {
-    $id = "{0,6}" -f $_.id
-    $type = "{0,-10}" -f $_.type
-    $status = "{0,-8}" -f $_.status
-    Write-Host "$id  $type  $status  $($_.title)"
-}
-Write-Host ""
-Write-Host "Tip: pass -Json to pipe to another script, or -Type to filter." -ForegroundColor DarkGray
+$CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
+$headers = @{}
+if ($env:CADENCE_TOKEN) { $headers['x-cadence-token'] = $env:CADENCE_TOKEN }
+# -Site names one of the configured WordPress sites; blank means the active one (or the one whose repository the shell is on).
+$siteQ = if ($PSBoundParameters.ContainsKey('Site') -and $Site) { "site=$([uri]::EscapeDataString($Site))" } elseif ($env:CADENCE_ACTIVE_REPO_PATH) { "repo=$([uri]::EscapeDataString($env:CADENCE_ACTIVE_REPO_PATH))" } else { '' }
+function With-Site($path) { if (-not $siteQ) { return $path }; if ($path.Contains('?')) { "$path&$siteQ" } else { "$path?$siteQ" } }
+function Get-Api($path) { Invoke-RestMethod -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300 }
+function Get-Text($path) { (Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300).Content }
+function Send-Api($method, $path, $payload) { $args = @{ Uri = "$CadenceApi$(With-Site $path)"; Method = $method; Headers = $headers; TimeoutSec = 300 }; if ($null -ne $payload) { $args.ContentType = 'application/json; charset=utf-8'; $args.Body = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 20)) }; Invoke-RestMethod @args }
+function Post-Api($path, $payload) { Send-Api 'POST' $path $payload }
+function Esc($s) { [uri]::EscapeDataString([string]$s) }
+# -InputObject, not the pipeline: Windows PowerShell 5.1 wraps a piped JSON array in a {value, Count} object, and an empty one prints nothing.
+function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
+function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
+function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
+Out-Json @((Get-Api '/api/plugins/wordpress/elementor/templates').items) 4

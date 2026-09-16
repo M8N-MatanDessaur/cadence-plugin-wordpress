@@ -1,40 +1,30 @@
-<#
+﻿<#
 .SYNOPSIS
-  Search WordPress posts and pages.
-
-.PARAMETER Query
-  Search text.
-
-.PARAMETER Type
-  Restrict to 'post' or 'page'. Omit for all.
-
+    Searches posts, pages and custom types by text (title and content), across every type.
 .EXAMPLE
-  .\Find-WPContent.ps1 -Query "recipe"
+    ./scripts/Find-WPContent.ps1 -Query financing
 #>
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][string]$Query,
-    [ValidateSet('post', 'page', '')][string]$Type = ''
+    [Parameter(Mandatory)][string]$Query,
+    [string]$Type = '',
+    [int]$Limit = 20,
+    [string]$Site = ''
 )
-
 $ErrorActionPreference = 'Stop'
-$q = [System.Uri]::EscapeDataString($Query)
-$url = "http://127.0.0.1:3800/api/plugins/wordpress/search?q=$q"
-if ($Type) { $url += "&type=$Type" }
-
-try {
-    $resp = Invoke-RestMethod -Uri $url
-    if (-not $resp -or $resp.Count -eq 0) {
-        Write-Host "No results." -ForegroundColor Yellow
-        return
-    }
-    Write-Host "$($resp.Count) result(s):" -ForegroundColor Green
-    foreach ($r in $resp) {
-        Write-Host ""
-        Write-Host "  [$($r.type)] $($r.title)" -ForegroundColor Cyan
-        Write-Host "    id: $($r.id)"
-        Write-Host "    url: $($r.url)"
-    }
-} catch {
-    Write-Error "Search failed: $($_.Exception.Message)"
-    exit 1
-}
+$CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
+$headers = @{}
+if ($env:CADENCE_TOKEN) { $headers['x-cadence-token'] = $env:CADENCE_TOKEN }
+# -Site names one of the configured WordPress sites; blank means the active one (or the one whose repository the shell is on).
+$siteQ = if ($PSBoundParameters.ContainsKey('Site') -and $Site) { "site=$([uri]::EscapeDataString($Site))" } elseif ($env:CADENCE_ACTIVE_REPO_PATH) { "repo=$([uri]::EscapeDataString($env:CADENCE_ACTIVE_REPO_PATH))" } else { '' }
+function With-Site($path) { if (-not $siteQ) { return $path }; if ($path.Contains('?')) { "$path&$siteQ" } else { "$path?$siteQ" } }
+function Get-Api($path) { Invoke-RestMethod -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300 }
+function Get-Text($path) { (Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300).Content }
+function Send-Api($method, $path, $payload) { $args = @{ Uri = "$CadenceApi$(With-Site $path)"; Method = $method; Headers = $headers; TimeoutSec = 300 }; if ($null -ne $payload) { $args.ContentType = 'application/json; charset=utf-8'; $args.Body = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 20)) }; Invoke-RestMethod @args }
+function Post-Api($path, $payload) { Send-Api 'POST' $path $payload }
+function Esc($s) { [uri]::EscapeDataString([string]$s) }
+# -InputObject, not the pipeline: Windows PowerShell 5.1 wraps a piped JSON array in a {value, Count} object, and an empty one prints nothing.
+function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
+function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
+function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
+Out-Json @(Get-Api "/api/plugins/wordpress/search?q=$(Esc $Query)&per_page=$Limit$(if ($Type) { "&type=$(Esc $Type)" })") 6

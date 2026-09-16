@@ -36,12 +36,87 @@ function readAllCfg() {
 function saveAllCfg(data) {
   fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf8');
 }
+// The site a request asked for by name or by repository path; set at the top of the request
+// handler and read synchronously by getCfg() before the handler's first await.
+let requestSite = null;
+const normPath = (v) => String(v || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+function siteForRepo(all, repoPath) {
+  const want = normPath(repoPath);
+  if (!want) return null;
+  return all.sites.find(s => s.repoPath && normPath(s.repoPath) === want)
+    || all.sites.find(s => s.repoPath && (want.startsWith(normPath(s.repoPath) + '/') || normPath(s.repoPath).startsWith(want + '/')))
+    || null;
+}
 function getActiveSite(all) {
   const a = all || readAllCfg();
   if (!a.sites.length) return null;
+  if (requestSite) {
+    const byName = a.sites.find(s => s.name === requestSite.name);
+    if (byName) return byName;
+    const byRepo = siteForRepo(a, requestSite.repo);
+    if (byRepo) return byRepo;
+  }
   const active = a.sites.find(s => s.name === a.activeSite);
   return active || a.sites[0] || null;
 }
+/** What a site looks like from outside: everything but the application password. */
+function publicSite(s) {
+  return { name: s.name, siteUrl: s.siteUrl, username: s.username, appPasswordSet: !!s.appPassword, repoPath: s.repoPath || '', adminUrl: (s.siteUrl || '').replace(/\/+$/, '') + '/wp-admin/' };
+}
+const decodeEntities = (t) => String(t || '').replace(/&#(\d+);/g, (m, n) => String.fromCharCode(Number(n))).replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCharCode(parseInt(n, 16))).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, ' ');
+const textOf = (v) => decodeEntities(stripHtml(v && typeof v === 'object' ? (v.raw != null ? v.raw : v.rendered) : v));
+/** Which builder laid the item out, from its meta. */
+function builderOf(meta) {
+  const m = meta || {};
+  if (m._elementor_edit_mode === 'builder' || (m._elementor_data && String(m._elementor_data).length > 2)) return 'elementor';
+  if (m._breakdance_data || m.breakdance_data) return 'breakdance';
+  if (m._bricks_page_content_2 || m._bricks_editor_mode === 'bricks') return 'bricks';
+  if (m._fl_builder_enabled) return 'beaver';
+  if (m._et_pb_use_builder === 'on') return 'divi';
+  return null;
+}
+const editUrlFor = (cfg, builder, id) => { const base = (cfg.siteUrl || '').replace(/\/+$/, ''); if (builder === 'elementor') return base + '/wp-admin/post.php?post=' + id + '&action=elementor'; if (builder === 'breakdance') return base + '/?breakdance=builder&id=' + id; return base + '/wp-admin/post.php?post=' + id + '&action=edit'; };
+/** One row per item, the same shape for every post type. */
+function rowOf(it, cfg) {
+  const meta = it.meta || {};
+  const yo = it.yoast_head_json || {};
+  const builder = builderOf(meta);
+  const content = it.content ? (it.content.raw != null ? it.content.raw : it.content.rendered) : '';
+  return {
+    id: it.id, type: it.type, title: textOf(it.title) || '(no title)', slug: it.slug, status: it.status, link: it.link, date: it.date, modified: it.modified,
+    author: it.author, featuredMedia: it.featured_media || 0, parent: it.parent || 0, menuOrder: it.menu_order,
+    excerpt: textOf(it.excerpt).slice(0, 200), words: content ? stripHtml(content).split(/\s+/).filter(Boolean).length : 0,
+    builder: builder || (content && /<!-- wp:/.test(content) ? 'gutenberg' : content ? 'classic' : null),
+    // What search engines see (rendered by Yoast) first; the stored value may be a %%template%%.
+    seoTitle: yo.title || meta._yoast_wpseo_title || meta.rank_math_title || '', seoDescription: yo.description || meta._yoast_wpseo_metadesc || meta.rank_math_description || '', seoTitleStored: meta._yoast_wpseo_title || meta.rank_math_title || '', seoDescriptionStored: meta._yoast_wpseo_metadesc || meta.rank_math_description || '',
+    noindex: meta['_yoast_wpseo_meta-robots-noindex'] === '1' || (yo.robots && yo.robots.index === 'noindex') || /noindex/.test(String(meta.rank_math_robots || '')),
+    editUrl: editUrlFor(cfg, builder, it.id),
+  };
+}
+/** Every item of a type, page by page, up to a cap. */
+async function fetchAllItems(cfg, rb, fields, cap, extra) {
+  const out = [];
+  let page = 1;
+  while (out.length < cap) {
+    const r = await wpRequest('GET', apiBase(cfg) + '/' + rb + '?per_page=100&page=' + page + '&status=any&context=edit&_fields=' + fields + (extra ? '&' + extra : ''), cfg);
+    if (r.status >= 400 || !Array.isArray(r.data)) break;
+    out.push(...r.data);
+    const pages = parseInt(r.headers['x-wp-totalpages'] || '1', 10) || 1;
+    if (page >= pages) break;
+    page++;
+  }
+  return out.slice(0, cap);
+}
+/** The Elementor tree, counted: sections, columns, widgets by type, images, text. */
+function elementorSummary(data) {
+  const out = { sections: 0, columns: 0, containers: 0, widgets: 0, byWidget: {}, images: 0, texts: [] };
+  const walk = (nodes) => { for (const n of (Array.isArray(nodes) ? nodes : [])) { if (!n) continue; if (n.elType === 'section') out.sections++; else if (n.elType === 'column') out.columns++; else if (n.elType === 'container') out.containers++; else if (n.elType === 'widget') { out.widgets++; out.byWidget[n.widgetType] = (out.byWidget[n.widgetType] || 0) + 1; const st = n.settings || {}; if (st.image && st.image.url) out.images++; const t = st.title || st.editor || st.text || st.description_text || st.title_text; if (t && out.texts.length < 60) out.texts.push({ widget: n.widgetType, id: n.id, text: stripHtml(String(t)).slice(0, 160) }); } walk(n.elements); } };
+  walk(data);
+  return out;
+}
+const INTERNAL_TYPES = new Set(['attachment', 'nav_menu_item', 'wp_block', 'wp_template', 'wp_template_part', 'wp_global_styles', 'wp_navigation', 'wp_font_family', 'wp_font_face', 'jet-engine', 'e-floating-buttons']);
+const healthCache = new Map();
+const altCache = new Map();
 function getCfg() {
   const site = getActiveSite();
   return site || { siteUrl: '', username: '', appPassword: '' };
@@ -79,7 +154,7 @@ function wpRequest(method, fullUrl, cfg, body, extraHeaders) {
       'Authorization': authHeader(cfg),
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'User-Agent': 'Symphonee-WordPress-Plugin',
+      'User-Agent': 'Cadence-WordPress-Plugin',
     }, extraHeaders || {});
 
     const opts = {
@@ -271,9 +346,40 @@ function mimeFromExt(filename) {
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────
-module.exports = function ({ addPrefixRoute, json, readBody }) {
+
+// ---- Attention: what the Plugins home shows on this app's tile. Reads the plugin's own
+// routes over loopback (they carry their caches), never writes, answers within a minute.
+const __attention = { value: null, until: 0 };
+function __selfGet(req, path, timeoutMs) {
+  return new Promise((resolve) => {
+    const host = req.headers.host || `127.0.0.1:${process.env.CADENCE_PORT || 3801}`;
+    const lib = require('http');
+    const r = lib.get({ host: host.split(':')[0], port: Number(host.split(':')[1] || 80), path, headers: { 'x-cadence-internal': '1' } }, (resp) => { let d = ''; resp.on('data', (c) => { d += c; }); resp.on('end', () => { try { resolve(resp.statusCode < 400 ? JSON.parse(d) : null); } catch (_) { resolve(null); } }); });
+    r.on('error', () => resolve(null));
+    r.setTimeout(timeoutMs || 45000, () => { r.destroy(); resolve(null); });
+  });
+}
+function __attentionOut(items) {
+  const rank = { error: 3, warn: 2, warning: 2, info: 1 };
+  const list = (items || []).filter((i) => i && i.text).map((i) => ({ level: i.level === 'warning' ? 'warn' : (i.level || 'info'), text: String(i.text) }));
+  const level = list.reduce((top, i) => (rank[i.level] > rank[top] ? i.level : top), list.length ? 'info' : 'ok');
+  return { count: list.length, level, items: list, readAt: new Date().toISOString() };
+}
+async function __attentionHandler(req, res, url, compute, json) {
+  if (__attention.value && __attention.until > Date.now() && url.searchParams.get('refresh') !== '1') return json(res, __attention.value);
+  let out;
+  try { out = __attentionOut(await compute(req)); } catch (e) { out = { count: 0, level: 'ok', items: [], error: e.message, readAt: new Date().toISOString() }; }
+  __attention.value = out; __attention.until = Date.now() + 60000;
+  return json(res, out);
+}
+
+module.exports = function ({ addRoute, addPrefixRoute, json, readBody, shell }) {
+  addRoute('GET', '/attention', (req, res, url) => __attentionHandler(req, res, url, async (req) => { const h = await __selfGet(req, '/api/plugins/wordpress/health'); return (h && h.issues || []).map((i) => ({ level: i.level, text: i.message })); }, json));
+  const permGate = shell && typeof shell.permGate === 'function' ? shell.permGate : null;
+  const gate = async (res, route, label) => (permGate ? permGate(res, 'api', route, label) : true);
   addPrefixRoute(async (req, res, url, subpath) => {
     const method = req.method;
+    requestSite = (url.searchParams.get('site') || url.searchParams.get('repo')) ? { name: url.searchParams.get('site') || '', repo: url.searchParams.get('repo') || '' } : null;
     try {
       // ── Config (active site) ────────────────────────────────────────
       if (subpath === '/config' && method === 'GET') {
@@ -301,7 +407,7 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
       if (subpath === '/sites' && method === 'GET') {
         const all = readAllCfg();
         return json(res, {
-          sites: all.sites.map(s => ({ name: s.name, siteUrl: s.siteUrl, username: s.username, appPasswordSet: !!s.appPassword })),
+          sites: all.sites.map(publicSite),
           activeSite: all.activeSite || '',
         });
       }
@@ -320,6 +426,7 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
           siteUrl: String(body.siteUrl).trim().replace(/\/+$/, ''),
           username: String(body.username).trim(),
           appPassword: String(body.appPassword),
+          repoPath: body.repoPath ? String(body.repoPath).trim().replace(/\/+$/, '') : '',
         });
         if (!all.activeSite) all.activeSite = name;
         saveAllCfg(all);
@@ -335,7 +442,7 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
         saveAllCfg(all);
         return json(res, { ok: true, activeSite: body.name });
       }
-      if (subpath.startsWith('/sites/') && method === 'PUT') {
+      if (subpath.startsWith('/sites/') && subpath !== '/sites/active' && (method === 'PUT' || method === 'PATCH')) {
         const siteName = decodeURIComponent(subpath.slice('/sites/'.length));
         const body = await readBody(req);
         const all = readAllCfg();
@@ -351,15 +458,19 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
         }
         if (body.siteUrl !== undefined) all.sites[idx].siteUrl = String(body.siteUrl).trim().replace(/\/+$/, '');
         if (body.username !== undefined) all.sites[idx].username = String(body.username).trim();
-        if (body.appPassword !== undefined) all.sites[idx].appPassword = String(body.appPassword);
+        // A blank password keeps the stored one; the form never has to show it.
+        if (body.appPassword !== undefined && String(body.appPassword)) all.sites[idx].appPassword = String(body.appPassword);
+        if (body.repoPath !== undefined) all.sites[idx].repoPath = String(body.repoPath).trim().replace(/\/+$/, '');
         saveAllCfg(all);
+        healthCache.clear();
         return json(res, { ok: true });
       }
-      if (subpath.startsWith('/sites/') && method === 'DELETE') {
+      if (subpath.startsWith('/sites/') && subpath !== '/sites/active' && method === 'DELETE') {
         const siteName = decodeURIComponent(subpath.slice('/sites/'.length));
         const all = readAllCfg();
         const idx = all.sites.findIndex(s => s.name === siteName);
         if (idx < 0) return json(res, { error: 'Site not found.' }, 404);
+        if (!(await gate(res, 'DELETE /api/plugins/wordpress/sites', `Forget the WordPress site ${siteName}`))) return;
         all.sites.splice(idx, 1);
         if (all.activeSite === siteName) all.activeSite = all.sites.length ? all.sites[0].name : '';
         saveAllCfg(all);
@@ -566,6 +677,7 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
       }
       if (mediaIdMatch && method === 'DELETE') {
         const cfg = cfgRequired(); if (!cfg) return true;
+        if (!(await gate(res, 'DELETE /api/plugins/wordpress/media', `Permanently delete WordPress media ${mediaIdMatch[1]}`))) return;
         // Media must force=true to actually delete (no trash)
         const r = await wpRequest('DELETE', apiBase(cfg) + '/media/' + mediaIdMatch[1] + '?force=true', cfg);
         return json(res, r.data, r.status);
@@ -782,7 +894,7 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
       // ── SEO (Yoast / RankMath via post meta) ───────────────────────
       // GET /seo/:type/:id  -> read known SEO meta fields
       // PUT /seo/:type/:id  -> update known SEO meta fields
-      const seoMatch = subpath.match(/^\/seo\/(posts|pages)\/(\d+)$/);
+      const seoMatch = subpath.match(/^\/seo\/([a-zA-Z0-9_\-]+)\/(\d+)$/);
       if (seoMatch) {
         const cfg = cfgRequired(); if (!cfg) return true;
         const type = seoMatch[1];
@@ -1048,6 +1160,7 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
         const cfg = cfgRequired(); if (!cfg) return true;
         const body = await readBody(req);
         const r = await wpRequest('POST', apiBase(cfg) + '/' + contentListMatch[1], cfg, body);
+        healthCache.clear();
         return json(res, r.data, r.status);
       }
       if (contentItemMatch && (method === 'PUT' || method === 'PATCH')) {
@@ -1056,10 +1169,12 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
         // Auto-backup before mutate (fire-and-forget; don't block save if it fails)
         try { await createBackup(cfg, contentItemMatch[1], contentItemMatch[2], 'auto'); } catch (_) {}
         const r = await wpRequest('POST', apiBase(cfg) + '/' + contentItemMatch[1] + '/' + contentItemMatch[2], cfg, body);
+        healthCache.clear();
         return json(res, r.data, r.status);
       }
       if (contentItemMatch && method === 'DELETE') {
         const cfg = cfgRequired(); if (!cfg) return true;
+        if (!(await gate(res, 'DELETE /api/plugins/wordpress/content', `${url.searchParams.get('force') === 'true' ? 'Permanently delete' : 'Trash'} WordPress ${contentItemMatch[1]} ${contentItemMatch[2]}`))) return;
         try { await createBackup(cfg, contentItemMatch[1], contentItemMatch[2], 'pre-delete'); } catch (_) {}
         const force = url.searchParams.get('force') === 'true' ? '?force=true' : '';
         const r = await wpRequest('DELETE', apiBase(cfg) + '/' + contentItemMatch[1] + '/' + contentItemMatch[2] + force, cfg);
@@ -1121,7 +1236,8 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
           return json(res, {
             id: p.id,
             title: (p.title && (p.title.rendered || p.title.raw)) || '',
-            editMode: meta._elementor_edit_mode || null, // 'builder' if built with Elementor
+            summary: Array.isArray(elementorData) ? elementorSummary(elementorData) : null,
+            editMode: meta._elementor_edit_mode || (Array.isArray(elementorData) && elementorData.length ? 'builder' : null),
             version: meta._elementor_version || null,
             template: meta._elementor_template_type || null,
             data: elementorData || null,
@@ -1257,11 +1373,11 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
       // contents so the UI can offer a one-click download.
       if (subpath === '/bridge/mu-plugin' && method === 'GET') {
         try {
-          const p = path.join(__dirname, 'wp-mu-plugin', 'symphonee-bridge.php');
+          const p = path.join(__dirname, 'wp-mu-plugin', 'cadence-bridge.php');
           const content = fs.readFileSync(p, 'utf8');
           res.writeHead(200, {
             'Content-Type': 'application/x-php',
-            'Content-Disposition': 'attachment; filename="symphonee-bridge.php"',
+            'Content-Disposition': 'attachment; filename="cadence-bridge.php"',
             'Cache-Control': 'no-store',
           });
           res.end(content);
@@ -1290,7 +1406,7 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
               method: 'GET',
               headers: {
                 'Accept': 'application/json',
-                'User-Agent': 'Symphonee-Bridge-Check',
+                'User-Agent': 'Cadence-Bridge-Check',
                 'Cache-Control': 'no-cache',
               },
             }, (resp) => {
@@ -1305,8 +1421,8 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
             req2.end();
           });
           const namespaces = (data && data.namespaces) || [];
-          const installed = namespaces.some(n => String(n).indexOf('symphonee/v1') !== -1);
-          return json(res, { installed, namespaces: installed ? ['symphonee/v1'] : [] });
+          const installed = namespaces.some(n => String(n).indexOf('cadence/v1') !== -1);
+          return json(res, { installed, namespaces: installed ? ['cadence/v1'] : [] });
         } catch (e) {
           return json(res, { installed: false, error: e.message });
         }
@@ -1564,6 +1680,7 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
       const restoreMatch = subpath.match(/^\/restore\/([a-zA-Z0-9_\-]+)$/);
       if (restoreMatch && method === 'POST') {
         const cfg = cfgRequired(); if (!cfg) return true;
+        if (!(await gate(res, 'POST /api/plugins/wordpress/restore', `Restore WordPress content from backup ${restoreMatch[1]}`))) return;
         const file = path.join(backupsDir, restoreMatch[1] + '.json');
         if (!fs.existsSync(file)) return json(res, { error: 'Backup not found' }, 404);
         try {
@@ -1578,15 +1695,20 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
           if (payload.excerpt) body.excerpt = (payload.excerpt.raw != null ? payload.excerpt.raw : payload.excerpt.rendered);
           if (payload.status) body.status = payload.status;
           if (payload.slug) body.slug = payload.slug;
-          if (payload.meta) body.meta = payload.meta;
+          // Empty meta values ask WordPress to delete the key, which some plugins refuse; leave them out.
+          if (payload.meta && typeof payload.meta === 'object') { const m = {}; for (const [k, v] of Object.entries(payload.meta)) if (v !== '' && v !== null && !(Array.isArray(v) && !v.length)) m[k] = v; if (Object.keys(m).length) body.meta = m; }
           if (payload.featured_media !== undefined) body.featured_media = payload.featured_media;
           if (payload.parent !== undefined) body.parent = payload.parent;
           if (payload.menu_order !== undefined) body.menu_order = payload.menu_order;
           if (payload.comment_status) body.comment_status = payload.comment_status;
           if (payload.categories) body.categories = payload.categories;
           if (payload.tags) body.tags = payload.tags;
-          const r = await wpRequest('POST', apiBase(cfg) + '/' + snap.restBase + '/' + snap.id, cfg, body);
-          return json(res, { ok: r.status < 300, status: r.status, data: r.data });
+          let r = await wpRequest('POST', apiBase(cfg) + '/' + snap.restBase + '/' + snap.id, cfg, body);
+          let metaSkipped = false;
+          // A meta key the site will not take back: restore everything else and say so.
+          if (r.status >= 400 && r.data && r.data.code === 'rest_meta_database_error' && body.meta) { delete body.meta; metaSkipped = true; r = await wpRequest('POST', apiBase(cfg) + '/' + snap.restBase + '/' + snap.id, cfg, body); }
+          healthCache.clear();
+          return json(res, { ok: r.status < 300, status: r.status, metaSkipped, error: r.status >= 300 ? (r.data && r.data.message) || ('HTTP ' + r.status) : undefined, data: r.data });
         } catch (e) {
           return json(res, { ok: false, error: e.message }, 500);
         }
@@ -1675,6 +1797,211 @@ module.exports = function ({ addPrefixRoute, json, readBody }) {
           const r = await wpRequest('GET', apiBase(cfg) + '/plugins', cfg);
           return json(res, Array.isArray(r.data) ? r.data : [], r.status);
         } catch (e) { return json(res, { error: e.message }, 500); }
+      }
+
+      // ── 3.0: the site at a glance (cached a minute) ─────────────────
+      if (subpath === '/health' && method === 'GET') {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        const refresh = url.searchParams.get('refresh') === '1';
+        const key = cfg.siteUrl;
+        const cached = healthCache.get(key);
+        if (!refresh && cached && Date.now() - cached.ts < 60000) return json(res, cached.data);
+        const out = { name: cfg.name || '', siteUrl: cfg.siteUrl, adminUrl: (cfg.siteUrl || '').replace(/\/+$/, '') + '/wp-admin/', repoPath: cfg.repoPath || '', site: {}, user: null, types: [], taxonomies: [], plugins: [], counts: { drafts: 0, pending: 0, scheduled: 0, pendingComments: 0, media: 0, imagesNoAlt: 0, users: 0 }, recent: [], issues: [], bridge: null };
+        const root = (cfg.siteUrl || '').replace(/\/+$/, '');
+        const [rootR, meR, typesR, taxR] = await Promise.all([
+          wpRequest('GET', root + '/wp-json', cfg).catch(() => ({ data: null })),
+          wpRequest('GET', apiBase(cfg) + '/users/me?context=edit', cfg).catch(() => ({ data: null })),
+          wpRequest('GET', apiBase(cfg) + '/types?context=edit', cfg).catch(() => ({ data: null })),
+          wpRequest('GET', apiBase(cfg) + '/taxonomies?context=edit', cfg).catch(() => ({ data: null })),
+        ]);
+        if (rootR.data && typeof rootR.data === 'object') { out.site = { name: rootR.data.name || '', description: rootR.data.description || '', home: rootR.data.home || cfg.siteUrl, timezone: rootR.data.timezone_string || '', gmtOffset: rootR.data.gmt_offset }; out.plugins = detectPluginsFromNamespaces(rootR.data.namespaces || []); out.bridge = (rootR.data.namespaces || []).some((n) => String(n).includes('cadence/v1')); }
+        if (meR.data && meR.data.id) out.user = { id: meR.data.id, name: meR.data.name, roles: meR.data.roles || [] };
+        const types = [];
+        if (typesR.data && typeof typesR.data === 'object') for (const key of Object.keys(typesR.data)) { const t = typesR.data[key]; if (t && t.rest_base) types.push({ slug: key, label: (t.labels && t.labels.name) || t.name || key, restBase: t.rest_base, hierarchical: !!t.hierarchical, viewable: !!t.viewable, internal: INTERNAL_TYPES.has(key) || /^wp_/.test(key), taxonomies: t.taxonomies || [], total: 0, published: 0, drafts: 0, pending: 0, scheduled: 0, private: 0, lastModified: null }); }
+        const taxonomies = [];
+        if (taxR.data && typeof taxR.data === 'object') for (const key of Object.keys(taxR.data)) { const t = taxR.data[key]; if (t && t.rest_base) taxonomies.push({ slug: key, label: (t.labels && t.labels.name) || t.name || key, restBase: t.rest_base, types: t.types || [], hierarchical: !!t.hierarchical, internal: ['nav_menu', 'link_category', 'post_format', 'wp_pattern_category', 'wp_theme', 'wp_template_part_area'].includes(key), count: 0 }); }
+        const count = async (u) => { try { const r = await wpRequest('GET', u, cfg); return parseInt(r.headers['x-wp-total'] || '0', 10) || 0; } catch (_) { return 0; } };
+        await Promise.all([
+          ...types.map(async (t) => {
+            if (t.slug === 'attachment') { t.total = await count(apiBase(cfg) + '/media?per_page=1&_fields=id'); out.counts.media = t.total; return; }
+            if (t.internal) { t.total = await count(apiBase(cfg) + '/' + t.restBase + '?per_page=1&_fields=id&context=edit'); return; }
+            const [total, drafts, pending, scheduled, priv] = await Promise.all([count(apiBase(cfg) + '/' + t.restBase + '?per_page=1&_fields=id&status=any&context=edit'), count(apiBase(cfg) + '/' + t.restBase + '?per_page=1&_fields=id&status=draft&context=edit'), count(apiBase(cfg) + '/' + t.restBase + '?per_page=1&_fields=id&status=pending&context=edit'), count(apiBase(cfg) + '/' + t.restBase + '?per_page=1&_fields=id&status=future&context=edit'), count(apiBase(cfg) + '/' + t.restBase + '?per_page=1&_fields=id&status=private&context=edit')]);
+            t.total = total; t.drafts = drafts; t.pending = pending; t.scheduled = scheduled; t.private = priv; t.published = Math.max(0, total - drafts - pending - scheduled - priv);
+          }),
+          ...taxonomies.map(async (x) => { x.count = await count(apiBase(cfg) + '/' + x.restBase + '?per_page=1&_fields=id'); }),
+          (async () => { out.counts.pendingComments = await count(apiBase(cfg) + '/comments?status=hold&per_page=1&_fields=id&context=edit'); })(),
+          (async () => { out.counts.users = await count(apiBase(cfg) + '/users?per_page=1&_fields=id&context=edit'); })(),
+        ]);
+        // The alt-text scan walks the whole library; insights does it and health reads its cache.
+        out.counts.imagesNoAlt = altCache.has(key) ? altCache.get(key).count : null;
+        // What changed last, across the content types
+        const contentTypes = types.filter((t) => !t.internal && t.slug !== 'attachment' && t.total);
+        const recents = await Promise.all(contentTypes.slice(0, 8).map(async (t) => { try { const r = await wpRequest('GET', apiBase(cfg) + '/' + t.restBase + '?per_page=5&status=any&context=edit&orderby=modified&order=desc&_fields=id,type,title,status,slug,link,modified,date,author,featured_media,excerpt,meta', cfg); return Array.isArray(r.data) ? r.data.map((it) => rowOf(it, cfg)) : []; } catch (_) { return []; } }));
+        out.recent = recents.flat().sort((a, b) => String(b.modified).localeCompare(String(a.modified))).slice(0, 10);
+        for (const t of contentTypes) { out.counts.drafts += t.drafts; out.counts.pending += t.pending; out.counts.scheduled += t.scheduled; const last = out.recent.find((r) => r.type === t.slug); t.lastModified = last ? last.modified : null; }
+        out.types = types.sort((a, b) => (a.internal === b.internal ? b.total - a.total : a.internal ? 1 : -1));
+        out.taxonomies = taxonomies;
+        if (out.counts.drafts) out.issues.push({ level: 'info', issue: 'draft', message: `${out.counts.drafts} draft${out.counts.drafts === 1 ? ' is' : 's are'} waiting.` });
+        if (out.counts.pending) out.issues.push({ level: 'warn', issue: 'pending', message: `${out.counts.pending} item${out.counts.pending === 1 ? '' : 's'} pending review.` });
+        if (out.counts.pendingComments) out.issues.push({ level: 'warn', issue: 'comments', message: `${out.counts.pendingComments} comment${out.counts.pendingComments === 1 ? '' : 's'} awaiting moderation.` });
+        if (out.counts.imagesNoAlt > 0) out.issues.push({ level: 'warn', issue: 'alt', message: `${out.counts.imagesNoAlt} image${out.counts.imagesNoAlt === 1 ? '' : 's'} in the library without alt text.` });
+        if (out.plugins.some((p) => p.id === 'elementor' || p.id === 'breakdance') && out.bridge === false) out.issues.push({ level: 'warn', issue: 'bridge', message: 'The Cadence bridge is not installed: page-builder layouts can be read but writes will not persist.' });
+        healthCache.set(key, { ts: Date.now(), data: out });
+        return json(res, out);
+      }
+
+      // ── 3.0: items of a type, one row each ────────────────────────────
+      if (subpath === '/entries' && method === 'GET') {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        const rb = url.searchParams.get('type') || 'pages';
+        const sp = new URLSearchParams();
+        sp.set('per_page', url.searchParams.get('per_page') || '50');
+        sp.set('page', url.searchParams.get('page') || '1');
+        sp.set('context', 'edit');
+        sp.set('status', url.searchParams.get('status') || 'any');
+        sp.set('orderby', url.searchParams.get('orderby') || 'modified');
+        sp.set('order', url.searchParams.get('order') || 'desc');
+        if (url.searchParams.get('q')) sp.set('search', url.searchParams.get('q'));
+        if (url.searchParams.get('parent')) sp.set('parent', url.searchParams.get('parent'));
+        for (const k of ['categories', 'tags', 'author']) if (url.searchParams.get(k)) sp.set(k, url.searchParams.get(k));
+        sp.set('_fields', 'id,type,title,status,slug,link,modified,date,author,featured_media,parent,menu_order,excerpt,content,meta,yoast_head_json');
+        const r = await wpRequest('GET', apiBase(cfg) + '/' + rb + '?' + sp.toString(), cfg);
+        if (r.status >= 400) return json(res, { error: (r.data && r.data.message) || ('HTTP ' + r.status), entries: [] }, r.status);
+        return json(res, { type: rb, total: parseInt(r.headers['x-wp-total'] || '0', 10) || 0, totalPages: parseInt(r.headers['x-wp-totalpages'] || '1', 10) || 1, entries: (Array.isArray(r.data) ? r.data : []).map((it) => rowOf(it, cfg)) });
+      }
+
+      // ── 3.0: one item in full, with everything resolved ───────────────
+      if (subpath === '/item' && method === 'GET') {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        const rb = url.searchParams.get('type') || 'pages';
+        const id = url.searchParams.get('id');
+        if (!id) return json(res, { error: 'id required' }, 400);
+        const r = await wpRequest('GET', apiBase(cfg) + '/' + rb + '/' + id + '?context=edit', cfg);
+        if (r.status >= 400 || !r.data || !r.data.id) return json(res, { error: (r.data && r.data.message) || 'Item not found' }, r.status >= 400 ? r.status : 404);
+        const it = r.data;
+        const row = rowOf(it, cfg);
+        const out = { ...row, restBase: rb, content: it.content ? (it.content.raw != null ? it.content.raw : it.content.rendered) : '', rendered: it.content ? it.content.rendered || '' : '', excerptRaw: it.excerpt ? (it.excerpt.raw != null ? it.excerpt.raw : '') : '', template: it.template || '', commentStatus: it.comment_status, sticky: !!it.sticky, format: it.format, password: it.password || '', meta: it.meta || {}, featured: null, authorName: '', terms: {}, elementor: null, backups: [], seo: null, dateGmt: it.date_gmt, modifiedGmt: it.modified_gmt, generatedSlug: it.generated_slug || '' };
+        const jobs = [];
+        if (it.featured_media) jobs.push(wpRequest('GET', apiBase(cfg) + '/media/' + it.featured_media + '?_fields=id,source_url,alt_text,title,media_details', cfg).then((m) => { if (m.data && m.data.id) out.featured = { id: m.data.id, url: m.data.source_url, alt: m.data.alt_text || '', title: textOf(m.data.title), width: m.data.media_details && m.data.media_details.width, height: m.data.media_details && m.data.media_details.height, thumb: m.data.media_details && m.data.media_details.sizes && m.data.media_details.sizes.medium ? m.data.media_details.sizes.medium.source_url : m.data.source_url }; }).catch(() => {}));
+        if (it.author) jobs.push(wpRequest('GET', apiBase(cfg) + '/users/' + it.author + '?_fields=id,name', cfg).then((u) => { if (u.data && u.data.name) out.authorName = u.data.name; }).catch(() => {}));
+        // Taxonomy terms: every taxonomy the type declares, resolved to names
+        jobs.push(wpRequest('GET', apiBase(cfg) + '/types/' + (it.type || rb) + '?context=edit', cfg).then(async (t) => {
+          const taxSlugs = (t.data && t.data.taxonomies) || [];
+          if (!taxSlugs.length) return;
+          const taxR = await wpRequest('GET', apiBase(cfg) + '/taxonomies?context=edit', cfg);
+          for (const slug of taxSlugs) {
+            const tax = taxR.data && taxR.data[slug];
+            if (!tax || !tax.rest_base) continue;
+            const ids = Array.isArray(it[tax.rest_base]) ? it[tax.rest_base] : [];
+            const all = await wpRequest('GET', apiBase(cfg) + '/' + tax.rest_base + '?per_page=100&_fields=id,name,slug,parent,count', cfg).catch(() => ({ data: [] }));
+            out.terms[tax.rest_base] = { slug, label: (tax.labels && tax.labels.name) || slug, hierarchical: !!tax.hierarchical, selected: ids, options: Array.isArray(all.data) ? all.data.map((x) => ({ id: x.id, name: decodeEntities(x.name), slug: x.slug, parent: x.parent || 0, count: x.count || 0 })) : [] };
+          }
+        }).catch(() => {}));
+        await Promise.all(jobs);
+        if (row.builder === 'elementor') { let d = out.meta._elementor_data; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { d = null; } } out.elementor = { version: out.meta._elementor_version || '', template: out.meta._elementor_template_type || '', summary: elementorSummary(d), data: d, editUrl: editUrlFor(cfg, 'elementor', it.id) }; }
+        out.backups = listBackups().filter((b) => b.restBase === rb && String(b.id) === String(id)).slice(0, 20);
+        const meta = out.meta;
+        out.seo = { plugin: meta._yoast_wpseo_title !== undefined || it.yoast_head_json ? 'yoast' : meta.rank_math_title !== undefined ? 'rankmath' : null, title: meta._yoast_wpseo_title || meta.rank_math_title || '', description: meta._yoast_wpseo_metadesc || meta.rank_math_description || '', focusKeyword: meta._yoast_wpseo_focuskw || meta.rank_math_focus_keyword || '', canonical: meta._yoast_wpseo_canonical || meta.rank_math_canonical_url || '', noindex: row.noindex, ogTitle: meta['_yoast_wpseo_opengraph-title'] || meta.rank_math_facebook_title || '', ogDescription: meta['_yoast_wpseo_opengraph-description'] || meta.rank_math_facebook_description || '', rendered: it.yoast_head_json ? { title: it.yoast_head_json.title, description: it.yoast_head_json.description, robots: it.yoast_head_json.robots, ogImage: (it.yoast_head_json.og_image || [])[0] && it.yoast_head_json.og_image[0].url } : null };
+        return json(res, out);
+      }
+
+      // ── 3.0: insights across the content types ───────────────────────
+      if (subpath === '/insights' && method === 'GET') {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        const typesR = await wpRequest('GET', apiBase(cfg) + '/types?context=edit', cfg);
+        const types = [];
+        if (typesR.data && typeof typesR.data === 'object') for (const key of Object.keys(typesR.data)) { const t = typesR.data[key]; if (t && t.rest_base && t.viewable && !INTERNAL_TYPES.has(key) && !/^wp_/.test(key) && key !== 'elementor_library') types.push({ slug: key, label: (t.labels && t.labels.name) || key, restBase: t.rest_base }); }
+        // Images without alt text, the whole library (up to 1500), remembered for health.
+        let imagesNoAlt = 0; let imagesRead = 0; const noAltSample = [];
+        try { let page = 1, pages = 1; do { const r = await wpRequest('GET', apiBase(cfg) + '/media?per_page=100&_fields=id,alt_text,title,source_url&media_type=image&page=' + page, cfg); if (page === 1) pages = Math.min(15, parseInt(r.headers['x-wp-totalpages'] || '1', 10) || 1); if (Array.isArray(r.data)) { imagesRead += r.data.length; for (const m of r.data) if (!m.alt_text || !String(m.alt_text).trim()) { imagesNoAlt++; if (noAltSample.length < 50) noAltSample.push({ id: m.id, title: textOf(m.title), url: m.source_url }); } } page++; } while (page <= pages); } catch (_) {}
+        altCache.set(cfg.siteUrl, { count: imagesNoAlt, ts: Date.now() });
+        const h = healthCache.get(cfg.siteUrl); if (h) { h.data.counts.imagesNoAlt = imagesNoAlt; }
+        const staleDays = 180;
+        const staleAt = Date.now() - staleDays * 86400000;
+        const entries = [];
+        const counts = { total: 0, draft: 0, pending: 0, scheduled: 0, private: 0, stale: 0, missingSeoTitle: 0, missingSeoDescription: 0, longSeoTitle: 0, longSeoDescription: 0, noindex: 0, noFeaturedImage: 0, noExcerpt: 0, thin: 0, untitled: 0 };
+        for (const t of types) {
+          const items = await fetchAllItems(cfg, t.restBase, 'id,type,title,status,slug,link,modified,date,author,featured_media,excerpt,content,meta,yoast_head_json', 500);
+          for (const it of items) {
+            const row = rowOf(it, cfg);
+            const issues = [];
+            counts.total++;
+            if (row.status === 'draft') { issues.push('draft'); counts.draft++; }
+            if (row.status === 'pending') { issues.push('pending'); counts.pending++; }
+            if (row.status === 'future') { issues.push('scheduled'); counts.scheduled++; }
+            if (row.status === 'private') { issues.push('private'); counts.private++; }
+            if (row.status === 'publish' && row.modified && new Date(row.modified).getTime() < staleAt) { issues.push('stale'); counts.stale++; }
+            if (row.title === '(no title)') { issues.push('untitled'); counts.untitled++; }
+            if (row.status === 'publish' && !row.noindex) {
+              if (!row.seoTitle) { issues.push('missing-seo-title'); counts.missingSeoTitle++; } else if (row.seoTitle.length > 60) { issues.push('long-seo-title'); counts.longSeoTitle++; }
+              if (!row.seoDescription) { issues.push('missing-seo-description'); counts.missingSeoDescription++; } else if (row.seoDescription.length > 160) { issues.push('long-seo-description'); counts.longSeoDescription++; }
+            }
+            if (row.noindex && row.status === 'publish') { issues.push('noindex'); counts.noindex++; }
+            if (t.slug === 'post' && !row.featuredMedia) { issues.push('no-featured-image'); counts.noFeaturedImage++; }
+            if (t.slug === 'post' && !row.excerpt) { issues.push('no-excerpt'); counts.noExcerpt++; }
+            if (row.status === 'publish' && !row.builder && row.words < 50 && (t.slug === 'post' || t.slug === 'page')) { issues.push('thin'); counts.thin++; }
+            if (issues.length) entries.push({ ...row, restBase: t.restBase, issues });
+          }
+        }
+        counts.imagesNoAlt = imagesNoAlt; counts.imagesRead = imagesRead;
+        return json(res, { counts, types, entries: entries.sort((a, b) => b.issues.length - a.issues.length), staleDays, imagesNoAlt: noAltSample });
+      }
+
+      // ── 3.0: terms of any taxonomy ─────────────────────────────────────
+      const termsListMatch = subpath.match(/^\/terms\/([a-zA-Z0-9_\-]+)$/);
+      const termMatch = subpath.match(/^\/terms\/([a-zA-Z0-9_\-]+)\/(\d+)$/);
+      if (termsListMatch && method === 'GET') {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        const sp = new URLSearchParams(); sp.set('per_page', url.searchParams.get('per_page') || '100'); sp.set('context', 'edit'); sp.set('hide_empty', 'false'); if (url.searchParams.get('q')) sp.set('search', url.searchParams.get('q')); if (url.searchParams.get('page')) sp.set('page', url.searchParams.get('page'));
+        const r = await wpRequest('GET', apiBase(cfg) + '/' + termsListMatch[1] + '?' + sp.toString(), cfg);
+        if (r.status >= 400) return json(res, { error: (r.data && r.data.message) || ('HTTP ' + r.status), terms: [] }, r.status);
+        return json(res, { total: parseInt(r.headers['x-wp-total'] || '0', 10) || 0, terms: (Array.isArray(r.data) ? r.data : []).map((x) => ({ id: x.id, name: decodeEntities(x.name), slug: x.slug, description: x.description || '', parent: x.parent || 0, count: x.count || 0, link: x.link, taxonomy: x.taxonomy })) });
+      }
+      if (termsListMatch && method === 'POST') {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        const body = await readBody(req);
+        const r = await wpRequest('POST', apiBase(cfg) + '/' + termsListMatch[1], cfg, body);
+        return json(res, r.data, r.status);
+      }
+      if (termMatch && (method === 'PUT' || method === 'PATCH')) {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        const body = await readBody(req);
+        const r = await wpRequest('POST', apiBase(cfg) + '/' + termMatch[1] + '/' + termMatch[2], cfg, body);
+        return json(res, r.data, r.status);
+      }
+      if (termMatch && method === 'DELETE') {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        if (!(await gate(res, 'DELETE /api/plugins/wordpress/terms', `Delete the WordPress term ${termMatch[1]} ${termMatch[2]}`))) return;
+        const r = await wpRequest('DELETE', apiBase(cfg) + '/' + termMatch[1] + '/' + termMatch[2] + '?force=true', cfg);
+        return json(res, r.data, r.status);
+      }
+
+      // ── 3.0: where a media file is used (featured images, then the content) ─
+      const mediaUsageMatch = subpath.match(/^\/media\/(\d+)\/usage$/);
+      if (mediaUsageMatch && method === 'GET') {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        const m = await wpRequest('GET', apiBase(cfg) + '/media/' + mediaUsageMatch[1] + '?_fields=id,source_url,media_details', cfg);
+        if (!m.data || !m.data.id) return json(res, { items: [] });
+        const file = String((m.data.media_details && m.data.media_details.file) || m.data.source_url || '').split('/').pop().replace(/\.[a-z0-9]+$/i, '').replace(/-\d+x\d+$/, '');
+        const r = await wpRequest('GET', apiBase(cfg) + '/search?search=' + encodeURIComponent(file) + '&per_page=30', cfg);
+        const hits = Array.isArray(r.data) ? r.data : [];
+        const featured = [];
+        for (const rb of ['pages', 'posts']) { try { const f = await wpRequest('GET', apiBase(cfg) + '/' + rb + '?per_page=100&status=any&context=edit&_fields=id,type,title,status,link,featured_media', cfg); if (Array.isArray(f.data)) featured.push(...f.data.filter((x) => String(x.featured_media) === String(mediaUsageMatch[1])).map((x) => ({ id: x.id, type: x.type, restBase: rb, title: textOf(x.title), status: x.status, link: x.link, how: 'featured image' }))); } catch (_) {} }
+        return json(res, { file, items: [...featured, ...hits.filter((h) => !featured.some((f) => f.id === h.id)).map((h) => ({ id: h.id, type: h.subtype, restBase: h.subtype === 'page' ? 'pages' : h.subtype === 'post' ? 'posts' : h.subtype, title: decodeEntities(h.title), link: h.url, how: 'in the content' }))] });
+      }
+
+      // ── 3.0: the site: theme, plugins, users, bridge ───────────────────
+      if (subpath === '/site' && method === 'GET') {
+        const cfg = cfgRequired(); if (!cfg) return true;
+        const out = { theme: null, plugins: null, users: [], bridge: null, namespaces: [] };
+        const root = (cfg.siteUrl || '').replace(/\/+$/, '');
+        await Promise.all([
+          wpRequest('GET', apiBase(cfg) + '/themes?status=active', cfg).then((t) => { if (Array.isArray(t.data) && t.data.length) { const x = t.data[0]; out.theme = { name: textOf(x.name), version: x.version, stylesheet: x.stylesheet, template: x.template, author: textOf(x.author), isChild: x.stylesheet !== x.template }; } }).catch(() => {}),
+          wpRequest('GET', apiBase(cfg) + '/plugins', cfg).then((p) => { out.plugins = Array.isArray(p.data) ? p.data.map((x) => ({ plugin: x.plugin, name: textOf(x.name), status: x.status, version: x.version, author: textOf(x.author) })) : { error: (p.data && p.data.message) || 'not allowed' }; }).catch(() => {}),
+          wpRequest('GET', apiBase(cfg) + '/users?per_page=50&context=edit&_fields=id,name,slug,email,roles,link,registered_date', cfg).then((u) => { if (Array.isArray(u.data)) out.users = u.data.map((x) => ({ id: x.id, name: x.name, slug: x.slug, email: x.email, roles: x.roles || [], link: x.link, registered: x.registered_date })); }).catch(() => {}),
+          wpRequest('GET', root + '/wp-json', cfg).then((r) => { out.namespaces = (r.data && r.data.namespaces) || []; out.bridge = out.namespaces.some((n) => String(n).includes('cadence/v1')); }).catch(() => {}),
+        ]);
+        return json(res, out);
       }
 
       // ── Raw passthrough (escape hatch for advanced use) ────────────

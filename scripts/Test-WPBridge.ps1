@@ -1,44 +1,27 @@
-<#
+﻿<#
 .SYNOPSIS
-  Check whether the Symphonee bridge mu-plugin is installed on the
-  configured WordPress site.
-
-.DESCRIPTION
-  Hits /api/plugins/wordpress/bridge/status which inspects the remote WP
-  REST root for the symphonee/v1 namespace. If the namespace is present,
-  the bridge is live and Elementor/Breakdance writes will persist. If not,
-  run Install-WPBridge.ps1 and upload the file to wp-content/mu-plugins/.
-
+    Is the Cadence bridge mu-plugin installed on the site (needed for page-builder writes to persist)?
 .EXAMPLE
-  .\Test-WPBridge.ps1
+    ./scripts/Test-WPBridge.ps1
 #>
-param()
-
+[CmdletBinding()]
+param(
+    [string]$Site = ''
+)
 $ErrorActionPreference = 'Stop'
-$url = 'http://127.0.0.1:3800/api/plugins/wordpress/bridge/status'
-
-try {
-    $resp = Invoke-RestMethod -Uri $url -Method Get
-} catch {
-    Write-Error "Failed to check bridge status: $($_.Exception.Message)"
-    exit 1
-}
-
-if ($resp.installed) {
-    Write-Host ""
-    Write-Host "Bridge mu-plugin is INSTALLED and active." -ForegroundColor Green
-    Write-Host "Elementor and Breakdance writes via REST should persist correctly."
-    Write-Host ""
-    exit 0
-} else {
-    Write-Host ""
-    Write-Host "Bridge mu-plugin is NOT installed." -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "To install:" -ForegroundColor Cyan
-    Write-Host "  1. .\scripts\Install-WPBridge.ps1"
-    Write-Host "  2. Upload the downloaded file to wp-content/mu-plugins/ on the site"
-    Write-Host "  3. Run this script again to verify"
-    Write-Host ""
-    if ($resp.error) { Write-Host "Error: $($resp.error)" -ForegroundColor DarkGray }
-    exit 1
-}
+$CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
+$headers = @{}
+if ($env:CADENCE_TOKEN) { $headers['x-cadence-token'] = $env:CADENCE_TOKEN }
+# -Site names one of the configured WordPress sites; blank means the active one (or the one whose repository the shell is on).
+$siteQ = if ($PSBoundParameters.ContainsKey('Site') -and $Site) { "site=$([uri]::EscapeDataString($Site))" } elseif ($env:CADENCE_ACTIVE_REPO_PATH) { "repo=$([uri]::EscapeDataString($env:CADENCE_ACTIVE_REPO_PATH))" } else { '' }
+function With-Site($path) { if (-not $siteQ) { return $path }; if ($path.Contains('?')) { "$path&$siteQ" } else { "$path?$siteQ" } }
+function Get-Api($path) { Invoke-RestMethod -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300 }
+function Get-Text($path) { (Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300).Content }
+function Send-Api($method, $path, $payload) { $args = @{ Uri = "$CadenceApi$(With-Site $path)"; Method = $method; Headers = $headers; TimeoutSec = 300 }; if ($null -ne $payload) { $args.ContentType = 'application/json; charset=utf-8'; $args.Body = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 20)) }; Invoke-RestMethod @args }
+function Post-Api($path, $payload) { Send-Api 'POST' $path $payload }
+function Esc($s) { [uri]::EscapeDataString([string]$s) }
+# -InputObject, not the pipeline: Windows PowerShell 5.1 wraps a piped JSON array in a {value, Count} object, and an empty one prints nothing.
+function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
+function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
+function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
+Get-Api '/api/plugins/wordpress/bridge/status' | ConvertTo-Json

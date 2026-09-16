@@ -1,14 +1,14 @@
 ﻿<#
 .SYNOPSIS
-    Takes a snapshot of an item now (every write takes one anyway).
+    Updates fields of an item from a JSON file. A snapshot is taken first, always.
 .EXAMPLE
-    ./scripts/Backup-WPItem.ps1 -Type pages -Id 28 -Reason "before rewrite"
+    ./scripts/Update-WPItem.ps1 -Type pages -Id 28 -JsonFile .ai-workspace/patch.json
 #>
 [CmdletBinding()]
 param(
     [string]$Type = 'pages',
     [Parameter(Mandatory)][int]$Id,
-    [string]$Reason = 'manual',
+    [Parameter(Mandatory)][string]$JsonFile,
     [string]$Site = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -27,4 +27,6 @@ function Esc($s) { [uri]::EscapeDataString([string]$s) }
 function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
 function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
 function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
-Post-Api '/api/plugins/wordpress/backup' @{ restBase = $Type; id = $Id; reason = $Reason } | ConvertTo-Json -Depth 4
+$doc = Read-JsonFile $JsonFile
+$r = Fail-IfWpError (Send-Api 'PUT' "/api/plugins/wordpress/content/$(Esc $Type)/$Id" $doc)
+[pscustomobject]@{ ok = [bool]$r.id; id = $r.id; status = $r.status; modified = $r.modified; link = $r.link } | ConvertTo-Json

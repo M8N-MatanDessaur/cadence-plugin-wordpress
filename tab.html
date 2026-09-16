@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WordPress</title>
-<script src="/plugins/sdk/symphonee-sdk.js"></script>
+<script src="/plugins/sdk/cadence-sdk.js"></script>
 <!-- Quill 2 rich text editor -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css">
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.min.js"></script>
@@ -916,10 +916,10 @@ function askConfirm(opts) {
 // Ask the parent dashboard to dispatch a prompt to the AI terminal.
 function sendToAi(prompt) {
   try {
-    if (window.Symphonee && typeof window.Symphonee.askAi === 'function') {
-      window.Symphonee.askAi(prompt);
+    if (window.Cadence && typeof window.Cadence.askAi === 'function') {
+      window.Cadence.askAi(prompt);
     } else {
-      window.parent.postMessage({ __symphonee: true, type: 'askAi', prompt: prompt }, location.origin);
+      window.parent.postMessage({ __cadence: true, type: 'askAi', prompt: prompt }, location.origin);
     }
   } catch (_) {}
 }
@@ -943,7 +943,7 @@ function summarizeContentForAi(p, section) {
 
 function buildAiPrompt(action, info) {
   const base =
-    'I am working on a WordPress ' + info.type + ' via the Symphonee WordPress plugin.\n' +
+    'I am working on a WordPress ' + info.type + ' via the Cadence WordPress plugin.\n' +
     'Title: ' + info.title + '\n' +
     'ID: ' + info.id + ' (rest base: ' + info.restBase + ')\n' +
     'Status: ' + info.status + '\n' +
@@ -1054,7 +1054,7 @@ async function checkConnection() {
 function openMainSettings() {
   try {
     window.parent.postMessage({
-      __symphonee: true,
+      __cadence: true,
       type: 'openSettings',
       tab: 'plugins',
       plugin: 'wordpress',
@@ -1433,7 +1433,7 @@ function renderHomeQuickActions() {
     if (!prompt) return;
     const siteUrl = (state.cfg && state.cfg.siteUrl) || '';
     const full =
-      'I am working on the WordPress site at ' + siteUrl + ' via the Symphonee WordPress plugin.\n' +
+      'I am working on the WordPress site at ' + siteUrl + ' via the Cadence WordPress plugin.\n' +
       'Full API reference: http://127.0.0.1:3800/api/plugins/instructions\n\n' +
       prefix + '\n\nUser request: ' + prompt;
     sendToAi(full);
@@ -1499,7 +1499,7 @@ function renderHomeBridgeBanner(b) {
   host.innerHTML =
     '<div class="home-bridge-banner">' +
       icon('help-circle') +
-      '<div><strong>Symphonee bridge not installed.</strong> ' +
+      '<div><strong>Cadence bridge not installed.</strong> ' +
         'Page-builder writes (Elementor, Breakdance, etc) will not persist until you install the bridge mu-plugin on this site. ' +
         '<code>.\\scripts\\Install-WPBridge.ps1</code> downloads it locally.</div>' +
       '<div class="spacer"></div>' +
@@ -2295,7 +2295,7 @@ function renderMediaDetail(m) {
   `);
   document.getElementById('aiBtn').addEventListener('click', () => {
     const prompt =
-      'I am working with a WordPress media item via Symphonee WordPress plugin.\n' +
+      'I am working with a WordPress media item via Cadence WordPress plugin.\n' +
       'Media ID: ' + m.id + ' (MIME: ' + (m.mime_type || '') + ')\n' +
       'Source URL: ' + (m.source_url || '') + '\n' +
       'Current alt text: "' + (m.alt_text || '') + '"\n\n' +
@@ -2480,7 +2480,7 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
 // ── Listen for config changes from settings panel ─────────
 window.addEventListener('message', (event) => {
   const msg = event.data;
-  if (!msg || !msg.__symphonee) return;
+  if (!msg || !msg.__cadence) return;
   if (msg.type === 'configChanged') {
     checkConnection().then(ok => {
       if (ok) loadDiscovery().then(() => { if (state.section) loadSection(); });

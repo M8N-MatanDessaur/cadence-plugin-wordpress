@@ -1,40 +1,28 @@
-<#
+﻿<#
 .SYNOPSIS
-    Restore a WordPress item from a previously saved snapshot.
-
-.DESCRIPTION
-    Calls /api/plugins/wordpress/restore/:backupId. Before restoring, the
-    plugin automatically takes a safety snapshot of the current state so
-    you can undo the restore if needed. Use Get-WPBackups.ps1 to list the
-    available snapshots.
-
-.PARAMETER BackupId
-    The snapshot identifier, e.g. '2026-04-09T12-00-00-000Z-pages-12'.
-
+    Restores an item from a snapshot (the current state is snapshotted first).
 .EXAMPLE
-    .\scripts\Restore-WPItem.ps1 -BackupId '2026-04-09T12-00-00-000Z-pages-12'
+    ./scripts/Restore-WPItem.ps1 -BackupId 2026-09-04T12-00-00-000Z-pages-28
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$BackupId,
-    [string]$ApiBase = 'http://127.0.0.1:3800/api/plugins/wordpress'
+    [string]$Site = ''
 )
-
 $ErrorActionPreference = 'Stop'
-
-try {
-    $r = Invoke-RestMethod -Uri ($ApiBase + '/restore/' + $BackupId) -Method POST
-} catch {
-    Write-Error ("Restore failed: " + $_.Exception.Message)
-    exit 1
-}
-
-if ($r.ok) {
-    Write-Host "Item restored from snapshot" -ForegroundColor Green
-    if ($r.data -and $r.data.id) { Write-Host ("  id:     " + $r.data.id) }
-    if ($r.data -and $r.data.link) { Write-Host ("  link:   " + $r.data.link) }
-    if ($r.data -and $r.data.status) { Write-Host ("  status: " + $r.data.status) }
-} else {
-    Write-Error ("Restore failed: " + ($r.error))
-    exit 1
-}
+$CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
+$headers = @{}
+if ($env:CADENCE_TOKEN) { $headers['x-cadence-token'] = $env:CADENCE_TOKEN }
+# -Site names one of the configured WordPress sites; blank means the active one (or the one whose repository the shell is on).
+$siteQ = if ($PSBoundParameters.ContainsKey('Site') -and $Site) { "site=$([uri]::EscapeDataString($Site))" } elseif ($env:CADENCE_ACTIVE_REPO_PATH) { "repo=$([uri]::EscapeDataString($env:CADENCE_ACTIVE_REPO_PATH))" } else { '' }
+function With-Site($path) { if (-not $siteQ) { return $path }; if ($path.Contains('?')) { "$path&$siteQ" } else { "$path?$siteQ" } }
+function Get-Api($path) { Invoke-RestMethod -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300 }
+function Get-Text($path) { (Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300).Content }
+function Send-Api($method, $path, $payload) { $args = @{ Uri = "$CadenceApi$(With-Site $path)"; Method = $method; Headers = $headers; TimeoutSec = 300 }; if ($null -ne $payload) { $args.ContentType = 'application/json; charset=utf-8'; $args.Body = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 20)) }; Invoke-RestMethod @args }
+function Post-Api($path, $payload) { Send-Api 'POST' $path $payload }
+function Esc($s) { [uri]::EscapeDataString([string]$s) }
+# -InputObject, not the pipeline: Windows PowerShell 5.1 wraps a piped JSON array in a {value, Count} object, and an empty one prints nothing.
+function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
+function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
+function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
+Post-Api "/api/plugins/wordpress/restore/$(Esc $BackupId)" @{} | Select-Object -Property ok, status | ConvertTo-Json

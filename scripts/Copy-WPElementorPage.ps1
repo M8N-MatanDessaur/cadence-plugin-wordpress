@@ -1,70 +1,33 @@
-<#
+﻿<#
 .SYNOPSIS
-  Clone an Elementor page or template into a new draft.
-
-.DESCRIPTION
-  Copies _elementor_data and related meta from a source post to a brand new
-  draft. Use this as the starting point for "build me a page like X but for
-  Y" workflows: clone the reference, then iterate on the new draft.
-
-  The new draft is created with status=draft so nothing goes live until you
-  explicitly publish it. The script prints the new id and the Elementor edit
-  URL so you can jump straight into editing.
-
-.PARAMETER SourceId
-  The post id to clone FROM.
-
-.PARAMETER Title
-  Title of the new draft. If omitted, uses "Clone of <source title>".
-
-.PARAMETER SourceType
-  REST base of the source (pages, posts, elementor_library, ...). Default: pages.
-
-.PARAMETER TargetType
-  REST base of the target (usually the same as source). Default: pages.
-
+    Clones an Elementor page or template onto a new draft.
 .EXAMPLE
-  .\Copy-WPElementorPage.ps1 -SourceId 123 -Title "Homepage -- Montreal"
-.EXAMPLE
-  .\Copy-WPElementorPage.ps1 -SourceId 45 -SourceType elementor_library -TargetType pages -Title "New landing page"
+    ./scripts/Copy-WPElementorPage.ps1 -SourceId 28 -Title "New landing"
 #>
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][int]$SourceId,
-    [string]$Title,
+    [Parameter(Mandatory)][int]$SourceId,
     [string]$SourceType = 'pages',
-    [string]$TargetType = 'pages'
+    [string]$TargetType = 'pages',
+    [string]$Title = '',
+    [string]$Site = ''
 )
-
 $ErrorActionPreference = 'Stop'
-$url = 'http://127.0.0.1:3800/api/plugins/wordpress/elementor/clone'
-
-$body = @{
-    sourceId   = $SourceId
-    sourceType = $SourceType
-    targetType = $TargetType
-}
-if ($Title) { $body.title = $Title }
-
-$json = $body | ConvertTo-Json -Compress
-
-try {
-    $resp = Invoke-RestMethod -Uri $url -Method Post -Body $json -ContentType 'application/json'
-} catch {
-    Write-Error "Clone failed: $($_.Exception.Message)"
-    exit 1
-}
-
-if (-not $resp.ok) {
-    Write-Error "Clone failed with status $($resp.status)"
-    $resp | ConvertTo-Json -Depth 5
-    exit 1
-}
-
-Write-Host ""
-Write-Host "Cloned #$SourceId -> new draft #$($resp.newId)" -ForegroundColor Green
-Write-Host "Edit URL: $($resp.editUrl)"
-Write-Host ""
-Write-Host "Open in Elementor, iterate on the copy, then publish when ready." -ForegroundColor DarkGray
-Write-Host "If the editor opens without the cloned layout, install the bridge mu-plugin:" -ForegroundColor Yellow
-Write-Host "  curl -s http://127.0.0.1:3800/api/plugins/wordpress/bridge/mu-plugin -o symphonee-bridge.php" -ForegroundColor Yellow
-Write-Host "  Then upload it to wp-content/mu-plugins/ on the target site." -ForegroundColor Yellow
+$CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
+$headers = @{}
+if ($env:CADENCE_TOKEN) { $headers['x-cadence-token'] = $env:CADENCE_TOKEN }
+# -Site names one of the configured WordPress sites; blank means the active one (or the one whose repository the shell is on).
+$siteQ = if ($PSBoundParameters.ContainsKey('Site') -and $Site) { "site=$([uri]::EscapeDataString($Site))" } elseif ($env:CADENCE_ACTIVE_REPO_PATH) { "repo=$([uri]::EscapeDataString($env:CADENCE_ACTIVE_REPO_PATH))" } else { '' }
+function With-Site($path) { if (-not $siteQ) { return $path }; if ($path.Contains('?')) { "$path&$siteQ" } else { "$path?$siteQ" } }
+function Get-Api($path) { Invoke-RestMethod -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300 }
+function Get-Text($path) { (Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300).Content }
+function Send-Api($method, $path, $payload) { $args = @{ Uri = "$CadenceApi$(With-Site $path)"; Method = $method; Headers = $headers; TimeoutSec = 300 }; if ($null -ne $payload) { $args.ContentType = 'application/json; charset=utf-8'; $args.Body = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 20)) }; Invoke-RestMethod @args }
+function Post-Api($path, $payload) { Send-Api 'POST' $path $payload }
+function Esc($s) { [uri]::EscapeDataString([string]$s) }
+# -InputObject, not the pipeline: Windows PowerShell 5.1 wraps a piped JSON array in a {value, Count} object, and an empty one prints nothing.
+function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
+function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
+function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
+$payload = @{ sourceId = $SourceId; sourceType = $SourceType; targetType = $TargetType }
+if ($Title) { $payload.title = $Title }
+Post-Api '/api/plugins/wordpress/elementor/clone' $payload | ConvertTo-Json

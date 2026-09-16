@@ -1,53 +1,29 @@
-<#
+﻿<#
 .SYNOPSIS
-    List snapshots saved by the WordPress plugin.
-
-.DESCRIPTION
-    Returns the plugin's local backup index. Use -RestBase and -Id to
-    filter to snapshots of a single item, otherwise every recent snapshot
-    is shown.
-
+    Snapshots, newest first; -Type and -Id narrow to one item.
 .EXAMPLE
-    .\scripts\Get-WPBackups.ps1
-    .\scripts\Get-WPBackups.ps1 -RestBase pages -Id 12
+    ./scripts/Get-WPBackups.ps1 -Type pages -Id 28
 #>
 [CmdletBinding()]
 param(
-    [string]$RestBase,
-    [int]$Id,
-    [int]$Limit = 50,
-    [string]$ApiBase = 'http://127.0.0.1:3800/api/plugins/wordpress'
+    [string]$Type = '',
+    [int]$Id = 0,
+    [string]$Site = ''
 )
-
 $ErrorActionPreference = 'Stop'
-
-$url = if ($RestBase -and $Id) {
-    "$ApiBase/backups/$RestBase/$Id"
-} else {
-    "$ApiBase/backups"
-}
-
-try {
-    $r = Invoke-RestMethod -Uri $url -Method GET
-} catch {
-    Write-Error ("Could not list backups: " + $_.Exception.Message)
-    exit 1
-}
-
-$items = @($r.items)
-if ($items.Count -eq 0) {
-    Write-Host "No snapshots found."
-    return
-}
-
-$items | Select-Object -First $Limit | ForEach-Object {
-    [pscustomobject]@{
-        backupId  = $_.backupId
-        restBase  = $_.restBase
-        id        = $_.id
-        title     = $_.title
-        status    = $_.status
-        reason    = $_.reason
-        timestamp = $_.timestamp
-    }
-} | Format-Table -AutoSize
+$CadenceApi = if ($env:CADENCE_API) { $env:CADENCE_API } else { 'http://127.0.0.1:3800' }
+$headers = @{}
+if ($env:CADENCE_TOKEN) { $headers['x-cadence-token'] = $env:CADENCE_TOKEN }
+# -Site names one of the configured WordPress sites; blank means the active one (or the one whose repository the shell is on).
+$siteQ = if ($PSBoundParameters.ContainsKey('Site') -and $Site) { "site=$([uri]::EscapeDataString($Site))" } elseif ($env:CADENCE_ACTIVE_REPO_PATH) { "repo=$([uri]::EscapeDataString($env:CADENCE_ACTIVE_REPO_PATH))" } else { '' }
+function With-Site($path) { if (-not $siteQ) { return $path }; if ($path.Contains('?')) { "$path&$siteQ" } else { "$path?$siteQ" } }
+function Get-Api($path) { Invoke-RestMethod -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300 }
+function Get-Text($path) { (Invoke-WebRequest -UseBasicParsing -Uri "$CadenceApi$(With-Site $path)" -Headers $headers -TimeoutSec 300).Content }
+function Send-Api($method, $path, $payload) { $args = @{ Uri = "$CadenceApi$(With-Site $path)"; Method = $method; Headers = $headers; TimeoutSec = 300 }; if ($null -ne $payload) { $args.ContentType = 'application/json; charset=utf-8'; $args.Body = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 20)) }; Invoke-RestMethod @args }
+function Post-Api($path, $payload) { Send-Api 'POST' $path $payload }
+function Esc($s) { [uri]::EscapeDataString([string]$s) }
+# -InputObject, not the pipeline: Windows PowerShell 5.1 wraps a piped JSON array in a {value, Count} object, and an empty one prints nothing.
+function Out-Json($o, $d = 12) { ConvertTo-Json -InputObject $o -Depth $d }
+function Read-JsonFile($file) { if (-not (Test-Path $file)) { throw "File not found: $file" }; ConvertFrom-Json -InputObject (Get-Content $file -Raw -Encoding UTF8) }
+function Fail-IfWpError($r) { if ($r -and $r.code -and $r.message -and -not $r.id) { throw "WordPress: $($r.message) ($($r.code))" }; $r }
+if ($Type -and $Id) { Out-Json @((Get-Api "/api/plugins/wordpress/backups/$(Esc $Type)/$Id").items) 4 } else { Out-Json @((Get-Api '/api/plugins/wordpress/backups').items) 4 }
