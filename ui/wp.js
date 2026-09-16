@@ -74,6 +74,23 @@ function WordPress({ host }) {
   const filtered = useMemo(() => q.trim().toLowerCase(), [q]);
   const typeRow = openType && health.data ? (health.data.types || []).find((t) => t.restBase === openType) : null;
   const openTheItem = (restBase, id) => { setTab('content'); setOpenType(restBase); setOpenMedia(null); setMode(null); setOpenItem({ type: restBase, id }); };
+
+  // ---------------------------------------------------------------- opened AT something
+  // "@wp 42" in the palette, a post a CLI resolved, a search hit: the app opens this surface
+  // with a target and says so again whenever it changes while the screen is up.
+  // { type, id, site? } lands on that item; { query } on the content list filtered to it.
+  const landOn = useCallback((target) => {
+    if (!target) return;
+    if (target.site) setSite(String(target.site));
+    if (target.id) { openTheItem(String(target.type || 'posts'), Number(target.id) || String(target.id)); return; }
+    if (target.query) { leave(); setTab('content'); setQ(String(target.query)); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!host.target || !host.onTarget) return;
+    landOn(host.target());
+    return host.onTarget(landOn);
+  }, [host, landOn]);
   const problems = insights.data ? (insights.data.entries || []).filter((e) => e.issues.some((i) => i !== 'draft' && i !== 'stale')).length : 0;
   const searchable = ['content', 'media', 'comments', 'terms', 'insights', 'backups'].includes(tab);
 
