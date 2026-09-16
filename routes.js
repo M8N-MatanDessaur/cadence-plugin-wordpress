@@ -381,6 +381,32 @@ module.exports = function ({ addRoute, addPrefixRoute, json, readBody, shell }) 
     const method = req.method;
     requestSite = (url.searchParams.get('site') || url.searchParams.get('repo')) ? { name: url.searchParams.get('site') || '', repo: url.searchParams.get('repo') || '' } : null;
     try {
+      // ── The @wp handle's search ─────────────────────────────────────
+      // "@wp pricing" in the palette, or an Ask Cadence question about something, arrives
+      // here and is answered in the shape every handle shares. WordPress's own /search
+      // covers posts, pages and every public type in one call; a numeric id resolves to a
+      // post before it ever gets here.
+      if (subpath === '/search' && method === 'GET') {
+        const cfg = getCfg();
+        if (!isConfigured(cfg)) return json(res, { items: [] });
+        const q = String(url.searchParams.get('q') || '').trim();
+        const limit = Math.max(1, Math.min(25, Number(url.searchParams.get('limit')) || 8));
+        if (!q) return json(res, { items: [] });
+        const r = await wpRequest('GET', apiBase(cfg) + '/search?search=' + encodeURIComponent(q) + '&per_page=' + limit + '&_embed=1', cfg);
+        const items = (Array.isArray(r.data) ? r.data : []).map((hit) => {
+          const sub = String(hit.subtype || hit.type || 'post');
+          const restBase = sub === 'page' ? 'pages' : sub === 'post' ? 'posts' : sub;
+          return {
+            kind: sub, id: String(hit.id),
+            label: String(hit.title || ('#' + hit.id)).replace(/<[^>]*>/g, ''),
+            detail: [cfg.name, sub].filter(Boolean).join(' - '),
+            open: { surface: 'wordpress', target: { type: restBase, id: String(hit.id), site: cfg.name } },
+            score: 0.7,
+          };
+        });
+        return json(res, { items });
+      }
+
       // ── Config (active site) ────────────────────────────────────────
       if (subpath === '/config' && method === 'GET') {
         const cfg = getCfg();

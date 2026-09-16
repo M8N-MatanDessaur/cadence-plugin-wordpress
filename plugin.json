@@ -632,7 +632,46 @@
           }
         ]
       }
-    ]
+    ],
+    "handle": {
+      "name": "wp",
+      "aliases": [
+        "wordpress",
+        "post",
+        "blog"
+      ],
+      "description": "WordPress: a post by id, or a search across posts, pages and every public type on the active site",
+      "placeholder": "a post id, or words to search for",
+      "resolve": [
+        {
+          "pattern": "^#?([0-9]+)$",
+          "kind": "post",
+          "label": "Post #{1}",
+          "detail": "WordPress, on the active site",
+          "open": {
+            "surface": "wordpress",
+            "target": {
+              "type": "posts",
+              "id": "{1}"
+            }
+          }
+        }
+      ],
+      "search": {
+        "route": "/search",
+        "minChars": 2,
+        "kinds": [
+          "post",
+          "page"
+        ]
+      },
+      "fallback": {
+        "surface": "wordpress",
+        "target": {
+          "query": "{text}"
+        }
+      }
+    }
   },
   "sdkVersion": 3
 }
