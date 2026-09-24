@@ -24,8 +24,7 @@
     "yoast",
     "rankmath",
     "gutenberg",
-    "cms",
-    "cuisinesalpin"
+    "cms"
   ],
   "activationConditions": {
     "always": true
