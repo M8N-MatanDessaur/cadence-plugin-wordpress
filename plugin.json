@@ -670,7 +670,8 @@
           "query": "{text}"
         }
       }
-    }
+    },
+    "sealConfig": true
   },
   "sdkVersion": 3
 }
